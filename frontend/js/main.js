@@ -1,28 +1,19 @@
-const API_BASE_URL = "http://localhost:3000";
+const API_BASE_URL = window.location.origin;
 const messageList = document.getElementById("messageList");
 const composer = document.getElementById("composer");
 const messageInput = document.getElementById("messageInput");
-
-const systemPrompt =
-  "你是莉莉安百合风俗店的 AI 接待员。你说话温柔、自然、有边界感，会先以店内接待的身份回应客人，并避免露骨色情描写。请直接回应用户，不要提到系统提示。";
+const conversationList = document.getElementById("conversationList");
+const newConversationButton = document.getElementById("newConversationButton");
 
 const avatarUrls = {
   user: "./assets/avatars/user.jpg",
   assistant: "./assets/avatars/lilian.jpg",
 };
 
-const chatMessages = [
-  {
-    role: "assistant",
-    initials: "L",
-    avatarUrl: avatarUrls.assistant,
-    name: "莉莉安",
-    time: formatTime(new Date()),
-    tone: "soft",
-    meta: "欢迎",
-    content: "欢迎光临莉莉安百合风俗店。",
-  },
-];
+let currentConversationId = null;
+let conversations = [];
+let chatMessages = [];
+let isBusy = false;
 
 function escapeHtml(value) {
   return String(value)
@@ -46,8 +37,28 @@ function formatTime(date) {
     .replaceAll("/", "-");
 }
 
+function formatHistoryTime(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "刚刚" : formatTime(date);
+}
+
 function defaultAvatarUrl(role) {
   return role === "user" ? avatarUrls.user : avatarUrls.assistant;
+}
+
+function decorateMessage(message) {
+  const role = message?.role === "user" ? "user" : "assistant";
+
+  return {
+    role,
+    content: typeof message?.content === "string" ? message.content : "",
+    initials: message?.initials ?? (role === "user" ? "你" : "AI"),
+    name: message?.name ?? (role === "user" ? "zzy" : "丰川祥子"),
+    avatarUrl: message?.avatarUrl ?? defaultAvatarUrl(role),
+    time: message?.time ?? formatTime(new Date()),
+    tone: message?.tone ?? (role === "user" ? "highlight" : "soft"),
+    meta: message?.meta ?? (role === "user" ? "新消息" : "回复"),
+  };
 }
 
 function avatarTemplate(message) {
@@ -84,9 +95,34 @@ function messageTemplate(message, index) {
   `;
 }
 
+function historyItemTemplate(conversation) {
+  return `
+    <button
+      class="history-item"
+      type="button"
+      data-id="${escapeHtml(conversation.id)}"
+      aria-current="${conversation.id === currentConversationId ? "true" : "false"}"
+      ${isBusy ? "disabled" : ""}
+    >
+      <span class="history-title">${escapeHtml(conversation.title || "新会话")}</span>
+      <span class="history-preview">${escapeHtml(conversation.preview || "还没有开始对话")}</span>
+      <span class="history-meta">${escapeHtml(formatHistoryTime(conversation.updatedAt))} · ${conversation.messageCount || 0} 条消息</span>
+    </button>
+  `;
+}
+
 function renderMessages() {
   messageList.innerHTML = chatMessages.map(messageTemplate).join("");
   messageList.scrollTop = messageList.scrollHeight;
+}
+
+function renderConversations() {
+  if (!conversations.length) {
+    conversationList.innerHTML = '<p class="history-empty">暂无会话</p>';
+    return;
+  }
+
+  conversationList.innerHTML = conversations.map(historyItemTemplate).join("");
 }
 
 function updateMessage(index, patch) {
@@ -106,16 +142,16 @@ function updateMessage(index, patch) {
 }
 
 function appendMessage({ role, content, meta, tone, name, initials, avatarUrl }) {
-  const message = {
+  const message = decorateMessage({
     role,
     content,
-    initials: initials ?? (role === "user" ? "你" : "AI"),
-    name: name ?? (role === "user" ? "你" : "莉莉安"),
-    avatarUrl: avatarUrl ?? defaultAvatarUrl(role),
+    initials,
+    name,
+    avatarUrl,
+    tone,
+    meta,
     time: formatTime(new Date()),
-    tone: tone ?? (role === "user" ? "highlight" : "soft"),
-    meta: meta ?? (role === "user" ? "新消息" : "回复"),
-  };
+  });
 
   chatMessages.push(message);
   messageList.insertAdjacentHTML("beforeend", messageTemplate(message, chatMessages.length - 1));
@@ -123,16 +159,15 @@ function appendMessage({ role, content, meta, tone, name, initials, avatarUrl })
   return chatMessages.length - 1;
 }
 
-function toApiMessages() {
-  return [
-    { role: "system", content: systemPrompt },
-    ...chatMessages
-      .filter((message) => message.role === "user" || message.role === "assistant")
-      .map((message) => ({
-        role: message.role,
-        content: message.content,
-      })),
-  ];
+function toConversationMessages() {
+  return chatMessages
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .map((message) => ({
+      role: message.role,
+      content: message.content,
+      time: message.time,
+      meta: message.meta,
+    }));
 }
 
 function setComposerEnabled(enabled) {
@@ -142,13 +177,108 @@ function setComposerEnabled(enabled) {
   });
 }
 
+function setBusy(busy) {
+  isBusy = busy;
+  setComposerEnabled(!busy && Boolean(currentConversationId));
+  if (newConversationButton) newConversationButton.disabled = busy;
+  conversationList.querySelectorAll(".history-item").forEach((button) => {
+    button.disabled = busy;
+  });
+}
+
+async function fetchJson(path, options = {}) {
+  const response = await fetch(`${API_BASE_URL}${path}`, options);
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data.error || `请求失败：${response.status}`);
+  }
+
+  return data;
+}
+
+async function refreshConversations() {
+  const data = await fetchJson("/api/conversations");
+  conversations = data.conversations || [];
+  renderConversations();
+}
+
+function applyConversation(conversation) {
+  currentConversationId = conversation.id;
+  chatMessages = (conversation.messages || []).map(decorateMessage);
+  renderMessages();
+  renderConversations();
+}
+
+async function loadConversation(conversationId) {
+  setBusy(true);
+
+  try {
+    const data = await fetchJson(`/api/conversations/${encodeURIComponent(conversationId)}`);
+    applyConversation(data.conversation);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function createConversation() {
+  setBusy(true);
+
+  try {
+    const data = await fetchJson("/api/conversations", { method: "POST" });
+    applyConversation(data.conversation);
+    await refreshConversations();
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function bootConversations() {
+  setBusy(true);
+
+  try {
+    await refreshConversations();
+
+    if (conversations.length > 0) {
+      const data = await fetchJson(`/api/conversations/${encodeURIComponent(conversations[0].id)}`);
+      applyConversation(data.conversation);
+      return;
+    }
+
+    const data = await fetchJson("/api/conversations", { method: "POST" });
+    applyConversation(data.conversation);
+    await refreshConversations();
+  } catch (error) {
+    currentConversationId = null;
+    conversations = [];
+    chatMessages = [
+      decorateMessage({
+        role: "assistant",
+        meta: "错误",
+        content: `历史服务连接失败：${error.message}`,
+      }),
+    ];
+    renderConversations();
+    renderMessages();
+  } finally {
+    setBusy(false);
+  }
+}
+
 async function requestAssistantReply(assistantIndex) {
+  if (!currentConversationId) {
+    throw new Error("当前没有可保存的会话");
+  }
+
   const response = await fetch(`${API_BASE_URL}/api/chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ messages: toApiMessages() }),
+    body: JSON.stringify({
+      conversationId: currentConversationId,
+      messages: toConversationMessages(),
+    }),
   });
 
   if (!response.ok || !response.body) {
@@ -205,6 +335,40 @@ document.querySelectorAll(".tool-btn, .mini-btn").forEach((button) => {
   });
 });
 
+conversationList.addEventListener("click", async (event) => {
+  const item = event.target.closest(".history-item");
+  if (!item || item.disabled || item.dataset.id === currentConversationId) return;
+
+  try {
+    await loadConversation(item.dataset.id);
+  } catch (error) {
+    chatMessages = [
+      decorateMessage({
+        role: "assistant",
+        meta: "错误",
+        content: `读取历史会话失败：${error.message}`,
+      }),
+    ];
+    renderMessages();
+  }
+});
+
+newConversationButton.addEventListener("click", async () => {
+  try {
+    await createConversation();
+    messageInput.focus();
+  } catch (error) {
+    chatMessages = [
+      decorateMessage({
+        role: "assistant",
+        meta: "错误",
+        content: `新建会话失败：${error.message}`,
+      }),
+    ];
+    renderMessages();
+  }
+});
+
 composer.addEventListener("submit", async (event) => {
   event.preventDefault();
   const text = messageInput.value.trim();
@@ -215,7 +379,7 @@ composer.addEventListener("submit", async (event) => {
 
   appendMessage({ role: "user", content: text });
   messageInput.value = "";
-  setComposerEnabled(false);
+  setBusy(true);
 
   const assistantIndex = appendMessage({
     role: "assistant",
@@ -228,15 +392,16 @@ composer.addEventListener("submit", async (event) => {
     updateMessage(assistantIndex, {
       meta: chatMessages[assistantIndex].content ? "回复" : "空回复",
     });
+    await refreshConversations();
   } catch (error) {
     updateMessage(assistantIndex, {
       meta: "错误",
       content: `后端调用失败：${error.message}`,
     });
   } finally {
-    setComposerEnabled(true);
+    setBusy(false);
     messageInput.focus();
   }
 });
 
-renderMessages();
+bootConversations();
