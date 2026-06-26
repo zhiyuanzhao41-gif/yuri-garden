@@ -1,60 +1,91 @@
-// 安装依赖: npm install express cors dotenv
 import express from 'express';
 import cors from 'cors';
-import 'dotenv/config'; // 用于读取 .env 文件中的 API_KEY
+import 'dotenv/config';
 
 const app = express();
+const PORT = process.env.PORT || 3000;
+const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
+
 app.use(cors());
 app.use(express.json());
 
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true });
+});
+
 app.post('/api/chat', async (req, res) => {
+  const { messages } = req.body ?? {};
+
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ error: 'messages must be a non-empty array' });
+  }
+
+  if (!process.env.API_KEY) {
+    return res.status(500).json({ error: 'Missing API_KEY in backend/.env' });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
   try {
-    const { messages } = req.body; // 前端传过来的对话历史
-
-    // 1. 设置响应头，告诉前端我要开始推送流式数据了
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-
-    // 2. 调用大模型 API（以 OpenAI 兼容格式为例）
-    const response = await fetch('https://api.deepseek.com/v1/chat/completions', { 
+    const upstream = await fetch(DEEPSEEK_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.API_KEY}`, // 密钥放环境变量！绝对不写死
+        Authorization: `Bearer ${process.env.API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'deepseek-chat',
-        messages: messages,
-        stream: true, // 开启流式，这是关键
+        model: process.env.MODEL || 'deepseek-chat',
+        messages,
+        stream: true,
       }),
     });
 
-    // 3. 核心：一边接收大模型的字，一边转手推给前端
-    const reader = response.body.getReader();
+    if (!upstream.ok || !upstream.body) {
+      const detail = await upstream.text();
+      throw new Error(`Model API returned ${upstream.status}: ${detail}`);
+    }
+
+    const reader = upstream.body.getReader();
     const decoder = new TextDecoder();
+    let buffer = '';
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      
-      const chunk = decoder.decode(value);
-      // 解析 SSE 格式的数据，提取真正的文字内容
-      const lines = chunk.split('\n');
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
       for (const line of lines) {
-        if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-          const json = JSON.parse(line.replace('data: ', ''));
-          const content = json.choices[0]?.delta?.content || '';
-          if (content) {
-            res.write(`data: ${JSON.stringify({ content })}\n\n`); // 实时推给前端
-          }
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data:')) continue;
+
+        const payload = trimmed.slice(5).trim();
+        if (payload === '[DONE]') {
+          res.write('data: [DONE]\n\n');
+          continue;
+        }
+
+        const parsed = JSON.parse(payload);
+        const content = parsed.choices?.[0]?.delta?.content;
+        if (content) {
+          res.write(`data: ${JSON.stringify({ content })}\n\n`);
         }
       }
     }
+
+    res.write('data: [DONE]\n\n');
   } catch (error) {
     res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+  } finally {
+    res.end();
   }
-  res.end();
 });
 
-app.listen(3000, () => console.log('AI 代理服务已启动 ▶ http://localhost:3000'));
+app.listen(PORT, () => {
+  console.log(`AI chat backend is running at http://localhost:${PORT}`);
+});
