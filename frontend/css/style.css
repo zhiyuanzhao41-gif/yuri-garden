@@ -250,9 +250,16 @@ body {
 
 .history-item {
   width: 100%;
+  margin: 0 0 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.history-open {
   display: grid;
   gap: 7px;
-  margin: 0 0 8px;
   padding: 11px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 10px;
@@ -262,17 +269,23 @@ body {
   transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
 }
 
-.history-item:hover:not(:disabled),
-.history-item:focus-visible {
+.history-open:hover:not(:disabled),
+.history-open:focus-visible {
   transform: translateY(-1px);
   border-color: rgba(141, 198, 255, 0.34);
   background: rgba(48, 29, 40, 0.74);
   outline: none;
 }
 
-.history-item[aria-current="true"] {
+.history-item[aria-current="true"] .history-open {
   border-color: rgba(231, 179, 210, 0.42);
   background: linear-gradient(180deg, rgba(86, 45, 68, 0.58), rgba(38, 20, 31, 0.7));
+}
+
+.history-copy {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
 }
 
 .history-title,
@@ -300,6 +313,43 @@ body {
   gap: 8px;
   font-size: 0.74rem;
   color: var(--muted);
+}
+
+.history-delete {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(34, 20, 29, 0.56);
+  color: #d98aa8;
+  opacity: 0;
+  transform: translateX(4px);
+  transition: opacity 0.18s ease, transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.history-delete svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.history-item:hover .history-delete,
+.history-item:focus-within .history-delete,
+.history-item[aria-current="true"] .history-delete {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.history-delete:hover:not(:disabled),
+.history-delete:focus-visible {
+  border-color: rgba(231, 179, 210, 0.34);
+  background: rgba(65, 38, 52, 0.9);
+  outline: none;
 }
 
 .history-empty {
@@ -597,8 +647,8 @@ body {
   }
 
   .history-item {
-    width: 220px;
-    min-width: 220px;
+    width: 248px;
+    min-width: 248px;
     margin: 0;
   }
 

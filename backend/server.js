@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
-import { access, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -178,6 +178,25 @@ app.post('/api/conversations', async (_req, res) => {
 app.get('/api/conversations/:id', async (req, res) => {
   try {
     res.json({ conversation: await readConversation(req.params.id) });
+  } catch (error) {
+    handleJsonError(res, error);
+  }
+});
+
+app.delete('/api/conversations/:id', async (req, res) => {
+  try {
+    const filePath = conversationPath(req.params.id);
+
+    try {
+      await unlink(filePath);
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        return res.status(404).json({ error: 'Conversation not found' });
+      }
+      throw error;
+    }
+
+    res.json({ ok: true });
   } catch (error) {
     handleJsonError(res, error);
   }

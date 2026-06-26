@@ -1,4 +1,16 @@
-const API_BASE_URL = window.location.origin;
+function resolveApiBaseUrl() {
+  const { hostname, origin, protocol, port } = window.location;
+  const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "";
+  const isBackendOrigin = isLocalHost && port === "3000";
+
+  if (protocol === "file:" || (isLocalHost && !isBackendOrigin)) {
+    return "http://localhost:3000";
+  }
+
+  return origin;
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 const messageList = document.getElementById("messageList");
 const composer = document.getElementById("composer");
 const messageInput = document.getElementById("messageInput");
@@ -14,6 +26,12 @@ let currentConversationId = null;
 let conversations = [];
 let chatMessages = [];
 let isBusy = false;
+let conversationPressTimer = null;
+let conversationPressTarget = null;
+let conversationPressTriggered = false;
+let conversationPressStartX = 0;
+let conversationPressStartY = 0;
+let suppressNextConversationClickId = null;
 
 function escapeHtml(value) {
   return String(value)
@@ -97,17 +115,24 @@ function messageTemplate(message, index) {
 
 function historyItemTemplate(conversation) {
   return `
-    <button
+    <div
       class="history-item"
-      type="button"
       data-id="${escapeHtml(conversation.id)}"
       aria-current="${conversation.id === currentConversationId ? "true" : "false"}"
-      ${isBusy ? "disabled" : ""}
     >
-      <span class="history-title">${escapeHtml(conversation.title || "新会话")}</span>
-      <span class="history-preview">${escapeHtml(conversation.preview || "还没有开始对话")}</span>
-      <span class="history-meta">${escapeHtml(formatHistoryTime(conversation.updatedAt))} · ${conversation.messageCount || 0} 条消息</span>
-    </button>
+      <button class="history-open" type="button" ${isBusy ? "disabled" : ""}>
+        <span class="history-copy">
+          <span class="history-title">${escapeHtml(conversation.title || "新会话")}</span>
+          <span class="history-preview">${escapeHtml(conversation.preview || "还没有开始对话")}</span>
+          <span class="history-meta">${escapeHtml(formatHistoryTime(conversation.updatedAt))} · ${conversation.messageCount || 0} 条消息</span>
+        </span>
+      </button>
+      <button class="history-delete" type="button" aria-label="删除会话" ${isBusy ? "disabled" : ""}>
+        <svg viewBox="0 0 24 24">
+          <path d="M6 7h12M10 7V5.5A1.5 1.5 0 0 1 11.5 4h1A1.5 1.5 0 0 1 14 5.5V7m-6 0 .7 11.1A1.4 1.4 0 0 0 10.1 19h3.8a1.4 1.4 0 0 0 1.4-1.3L16 7M9.5 10.5v5M14.5 10.5v5"/>
+        </svg>
+      </button>
+    </div>
   `;
 }
 
@@ -123,6 +148,57 @@ function renderConversations() {
   }
 
   conversationList.innerHTML = conversations.map(historyItemTemplate).join("");
+}
+
+function getConversationById(id) {
+  return conversations.find((conversation) => conversation.id === id);
+}
+
+async function deleteConversation(conversationId) {
+  if (!conversationId || isBusy) return;
+
+  const conversation = getConversationById(conversationId);
+  const title = conversation?.title || "该会话";
+  const confirmed = window.confirm(`确定删除“${title}”吗？`);
+  if (!confirmed) return;
+
+  setBusy(true);
+
+  try {
+    await fetchJson(`/api/conversations/${encodeURIComponent(conversationId)}`, {
+      method: "DELETE",
+    });
+
+    conversations = conversations.filter((item) => item.id !== conversationId);
+
+    if (currentConversationId === conversationId) {
+      currentConversationId = null;
+      chatMessages = [];
+      renderMessages();
+
+      if (conversations.length > 0) {
+        const nextConversation = conversations[0];
+        const data = await fetchJson(`/api/conversations/${encodeURIComponent(nextConversation.id)}`);
+        applyConversation(data.conversation);
+      } else {
+        const data = await fetchJson("/api/conversations", { method: "POST" });
+        applyConversation(data.conversation);
+      }
+    }
+
+    await refreshConversations();
+  } catch (error) {
+    chatMessages = [
+      decorateMessage({
+        role: "assistant",
+        meta: "错误",
+        content: `删除会话失败：${error.message}`,
+      }),
+    ];
+    renderMessages();
+  } finally {
+    setBusy(false);
+  }
 }
 
 function updateMessage(index, patch) {
@@ -181,7 +257,7 @@ function setBusy(busy) {
   isBusy = busy;
   setComposerEnabled(!busy && Boolean(currentConversationId));
   if (newConversationButton) newConversationButton.disabled = busy;
-  conversationList.querySelectorAll(".history-item").forEach((button) => {
+  conversationList.querySelectorAll(".history-item button").forEach((button) => {
     button.disabled = busy;
   });
 }
@@ -336,8 +412,24 @@ document.querySelectorAll(".tool-btn, .mini-btn").forEach((button) => {
 });
 
 conversationList.addEventListener("click", async (event) => {
+  const deleteButton = event.target.closest(".history-delete");
+  if (deleteButton) {
+    event.stopPropagation();
+    const item = deleteButton.closest(".history-item");
+    await deleteConversation(item?.dataset.id);
+    return;
+  }
+
   const item = event.target.closest(".history-item");
-  if (!item || item.disabled || item.dataset.id === currentConversationId) return;
+  if (!item || item.dataset.id === currentConversationId) return;
+
+  const openButton = event.target.closest(".history-open");
+  if (!openButton) return;
+
+  if (suppressNextConversationClickId === item.dataset.id) {
+    suppressNextConversationClickId = null;
+    return;
+  }
 
   try {
     await loadConversation(item.dataset.id);
@@ -350,6 +442,56 @@ conversationList.addEventListener("click", async (event) => {
       }),
     ];
     renderMessages();
+  }
+});
+
+conversationList.addEventListener("pointerdown", (event) => {
+  const item = event.target.closest(".history-item");
+  if (!item || event.pointerType !== "touch" || event.target.closest(".history-delete")) return;
+
+  conversationPressTarget = item;
+  conversationPressTriggered = false;
+  conversationPressStartX = event.clientX;
+  conversationPressStartY = event.clientY;
+  conversationPressTimer = window.setTimeout(() => {
+    conversationPressTriggered = true;
+    deleteConversation(item.dataset.id);
+    conversationPressTimer = null;
+  }, 600);
+});
+
+conversationList.addEventListener("pointerup", () => {
+  if (conversationPressTimer) {
+    window.clearTimeout(conversationPressTimer);
+    conversationPressTimer = null;
+  }
+  if (conversationPressTriggered && conversationPressTarget) {
+    suppressNextConversationClickId = conversationPressTarget.dataset.id;
+  }
+  conversationPressTriggered = false;
+  conversationPressTarget = null;
+});
+
+conversationList.addEventListener("pointercancel", () => {
+  if (conversationPressTimer) {
+    window.clearTimeout(conversationPressTimer);
+    conversationPressTimer = null;
+  }
+  conversationPressTriggered = false;
+  conversationPressTarget = null;
+});
+
+conversationList.addEventListener("pointermove", (event) => {
+  if (!conversationPressTarget || event.pointerType !== "touch") return;
+
+  const movedAway =
+    Math.abs(event.clientX - conversationPressStartX) > 8 ||
+    Math.abs(event.clientY - conversationPressStartY) > 8;
+  if (movedAway && conversationPressTimer) {
+    window.clearTimeout(conversationPressTimer);
+    conversationPressTimer = null;
+    conversationPressTriggered = false;
+    conversationPressTarget = null;
   }
 });
 
