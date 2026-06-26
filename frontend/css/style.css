@@ -39,7 +39,7 @@ body {
 .scene {
   background:
     linear-gradient(180deg, rgba(14, 8, 11, 0.32), rgba(14, 8, 11, 0.12)),
-    url("../desktop.jpg") center center / cover no-repeat;
+    url("../background.jpg") center center / cover no-repeat;
   transform: scale(1.01);
   filter: saturate(1.04) contrast(1.02) brightness(0.96);
 }

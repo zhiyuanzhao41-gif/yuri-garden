@@ -1,13 +1,85 @@
 <!DOCTYPE html>
-<html lang="">
-  <head>
-    <meta charset="UTF-8">
-    <link rel="icon" href="/favicon.ico">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>莉莉安百合风俗店</title>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1d0f19">
+  <title>莉莉安百合风俗店</title>
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+  <div class="scene"></div>
+  <div class="overlay"></div>
+
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">L</div>
+        <div class="brand-copy">
+          <h1>莉莉安百合风俗店</h1>
+          <p>AI 聊天接待 · 预约管理 · 角色互动面板</p>
+        </div>
+      </div>
+
+      <div class="toolbar" aria-label="工具栏">
+        <button class="tool-btn" type="button" data-action="panel">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M7 7v4M17 11h3M4 17h16M13 17v-4M4 11h3M11 17h2M12 7v4" /></svg>
+        </button>
+        <button class="tool-btn" type="button" data-action="mode">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M7 8h10M6 19h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2Z" /></svg>
+        </button>
+        <button class="tool-btn" type="button" data-action="format">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5h12M7 19l6-14 6 14M10 14h8" /></svg>
+        </button>
+        <button class="tool-btn" type="button" data-action="language">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5zM7 9h10M9 5c0 4 0 10 5 14M15 5c0 4 0 10-5 14" /></svg>
+        </button>
+        <button class="tool-btn" type="button" data-action="profile">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" /></svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="chat-panel" aria-label="聊天窗口">
+        <div class="notice">
+          <p class="notice-title">系统提示</p>
+          <p class="notice-text">
+            这里是莉莉安的接待台。你可以让 AI 代写回复、模拟角色对话，或直接发起新的预约会话。
+          </p>
+          <ul class="notice-list">
+            <li>当前在线接待：3</li>
+            <li>平均响应：1.2 秒</li>
+            <li>会话状态：柔和夜间模式</li>
+          </ul>
+        </div>
+
+        <div class="messages" id="messageList" aria-live="polite"></div>
+
+        <form class="composer" id="composer">
+          <button class="mini-btn" type="button" data-action="menu" aria-label="更多功能">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+          </button>
+          <button class="mini-btn" type="button" data-action="prompt" aria-label="快捷提示">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18M7 7l10 10M17 7 7 17" /></svg>
+          </button>
+
+          <input
+            id="messageInput"
+            class="composer-input"
+            type="text"
+            placeholder="输入想发送的消息，或输入 /? 获取帮助"
+            autocomplete="off"
+          >
+
+          <button class="send-btn" type="submit" aria-label="发送消息">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 21 3l-6 18-3.4-7.4L3 11.5ZM21 3 11.6 13.6" /></svg>
+          </button>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <script src="./js/main.js"></script>
+</body>
 </html>
