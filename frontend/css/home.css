@@ -1,0 +1,265 @@
+:root {
+  color-scheme: dark;
+  --ink: #fff2fa;
+  --soft-ink: #ead3e2;
+  --panel: rgba(16, 10, 18, 0.82);
+  --panel-deep: rgba(9, 7, 13, 0.92);
+  --rose: #f3a1c5;
+  --rose-hot: #ff74ad;
+  --rose-light: #ffd8ec;
+  --violet: #46304d;
+  --line: rgba(255, 205, 228, 0.24);
+  --shadow: 0 24px 70px rgba(0, 0, 0, 0.48);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100%;
+  margin: 0;
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  color: var(--ink);
+  background:
+    linear-gradient(180deg, rgba(12, 7, 12, 0.22), rgba(12, 7, 12, 0.5)),
+    url("../background.jpg") center center / cover fixed no-repeat,
+    #160f18;
+}
+
+button {
+  font: inherit;
+}
+
+.home-page {
+  width: 100%;
+  overflow-x: hidden;
+}
+
+.hero-section,
+.roster-section {
+  position: relative;
+  min-height: 100vh;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.home-backdrop,
+.home-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.home-backdrop {
+  position: fixed;
+  z-index: -4;
+  background: transparent;
+  filter: saturate(1.08) contrast(1.04) brightness(0.9);
+  transform: none;
+}
+
+.home-overlay {
+  z-index: -2;
+  background:
+    radial-gradient(circle at 50% 32%, rgba(255, 200, 225, 0.18), transparent 32%),
+    linear-gradient(90deg, rgba(18, 8, 16, 0.5), rgba(18, 8, 16, 0.06) 28%, rgba(18, 8, 16, 0.08) 72%, rgba(18, 8, 16, 0.54)),
+    linear-gradient(180deg, rgba(18, 8, 16, 0.2), rgba(18, 8, 16, 0.62));
+}
+
+.hero-content {
+  position: relative;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  padding: 8vh 20px 12vh;
+  text-align: center;
+}
+
+.hero-content h1 {
+  margin: 0;
+  font-family: "Brush Script MT", "Segoe Script", "Lucida Handwriting", cursive;
+  font-size: clamp(4.2rem, 12vw, 10rem);
+  font-weight: 400;
+  line-height: 0.94;
+  color: #fff7fb;
+  letter-spacing: 0;
+  text-shadow:
+    0 0 18px rgba(255, 160, 205, 0.74),
+    0 0 42px rgba(255, 115, 175, 0.54),
+    0 12px 32px rgba(14, 6, 14, 0.62);
+}
+
+.garden-button {
+  position: absolute;
+  top: 72vh;
+  left: 50%;
+  padding: 0;
+  border: 0;
+  color: #fff7fb;
+  background: transparent;
+  cursor: pointer;
+  font-family: "Brush Script MT", "Segoe Script", "Lucida Handwriting", cursive;
+  font-size: clamp(2rem, 4.8vw, 3.6rem);
+  font-weight: 400;
+  line-height: 0.94;
+  letter-spacing: 0;
+  text-shadow:
+    0 0 18px rgba(255, 160, 205, 0.74),
+    0 0 42px rgba(255, 115, 175, 0.54),
+    0 12px 32px rgba(14, 6, 14, 0.62);
+  transform: translateX(-50%);
+  transition: transform 0.18s ease, filter 0.18s ease;
+}
+
+.garden-button:hover,
+.garden-button:focus-visible {
+  transform: translate(-50%, -2px);
+  filter: brightness(1.06);
+  outline: none;
+}
+
+.roster-section {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: clamp(54px, 8vh, 86px) 28px 80px;
+}
+
+.roster-overlay {
+  background:
+    radial-gradient(circle at 50% 8%, rgba(255, 185, 220, 0.22), transparent 25%),
+    linear-gradient(180deg, rgba(20, 11, 22, 0.62), rgba(18, 12, 22, 0.78)),
+    linear-gradient(90deg, rgba(12, 7, 14, 0.48), transparent 28%, transparent 72%, rgba(12, 7, 14, 0.48));
+}
+
+.roster-content {
+  width: min(1220px, 100%);
+}
+
+.roster-content h2 {
+  margin: 0 0 clamp(34px, 6vh, 58px);
+  text-align: center;
+  color: var(--rose-light);
+  font-family: SimSun, "Songti SC", "STSong", serif;
+  font-size: clamp(2.4rem, 5.8vw, 4.5rem);
+  font-weight: 400;
+  line-height: 1.08;
+  letter-spacing: 0;
+  text-shadow:
+    0 0 12px rgba(255, 180, 215, 0.86),
+    0 0 28px rgba(245, 105, 170, 0.6),
+    0 10px 28px rgba(9, 4, 9, 0.72);
+}
+
+.character-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: clamp(22px, 3vw, 36px);
+  align-items: start;
+}
+
+.character-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(34, 25, 38, 0.74), rgba(10, 8, 14, 0.92)),
+    var(--panel);
+  box-shadow:
+    var(--shadow),
+    0 0 26px rgba(244, 138, 190, 0.12);
+}
+
+.character-image {
+  position: relative;
+  height: clamp(178px, 22vw, 250px);
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, rgba(255, 183, 216, 0.34), rgba(83, 59, 94, 0.56)),
+    var(--violet);
+}
+
+.character-image img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.character-image::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 36%;
+  background: linear-gradient(180deg, transparent, rgba(8, 6, 10, 0.72));
+  pointer-events: none;
+}
+
+.character-name {
+  min-height: 78px;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  border-top: 1px solid rgba(255, 205, 228, 0.14);
+  color: #f7edf4;
+  background:
+    linear-gradient(180deg, rgba(24, 18, 26, 0.9), rgba(7, 6, 10, 0.94)),
+    var(--panel-deep);
+  font-size: clamp(1.18rem, 2.2vw, 1.58rem);
+  font-family: SimSun, "Songti SC", "STSong", serif;
+  font-weight: 400;
+  line-height: 1.25;
+  text-align: center;
+  text-shadow: 0 0 14px rgba(255, 210, 232, 0.22);
+}
+
+.character-card.is-placeholder .character-image {
+  display: grid;
+  place-items: center;
+}
+
+.character-card.is-placeholder .character-image span {
+  width: min(82%, 260px);
+  padding: 18px 20px;
+  border: 1px solid rgba(255, 222, 239, 0.3);
+  border-radius: 999px;
+  color: rgba(255, 241, 248, 0.86);
+  background: rgba(16, 10, 18, 0.32);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  text-align: center;
+  font-family: "Brush Script MT", "Segoe Script", cursive;
+  font-size: clamp(1.9rem, 4vw, 3.1rem);
+  letter-spacing: 0;
+}
+
+@media (max-width: 720px) {
+  .hero-content {
+    gap: 34px;
+    padding-inline: 18px;
+  }
+
+  .garden-button {
+    font-size: clamp(1.8rem, 11vw, 3rem);
+  }
+
+  .roster-section {
+    padding: 46px 18px 64px;
+  }
+
+  .character-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .character-card {
+    border-radius: 16px;
+  }
+}
