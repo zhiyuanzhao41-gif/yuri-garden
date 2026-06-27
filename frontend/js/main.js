@@ -88,9 +88,45 @@ function avatarTemplate(message) {
   return `<div class="avatar" data-initials="${escapeHtml(message.initials || "")}" data-has-image="${avatarUrl ? "true" : "false"}" aria-hidden="true">${image}</div>`;
 }
 
+function findRoundUserIndex(assistantIndex) {
+  if (chatMessages[assistantIndex]?.role !== "assistant") return -1;
+
+  for (let index = assistantIndex - 1; index >= 0; index -= 1) {
+    if (chatMessages[index]?.role === "user") return index;
+  }
+
+  return -1;
+}
+
+function roundStartIndex(assistantIndex) {
+  const userIndex = findRoundUserIndex(assistantIndex);
+  return userIndex >= 0 ? userIndex : assistantIndex;
+}
+
+function assistantActionsTemplate(index) {
+  const canResend = findRoundUserIndex(index) >= 0;
+  const disabled = isBusy ? "disabled" : "";
+  const resendDisabled = !canResend || isBusy ? "disabled" : "";
+
+  return `
+        <div class="bubble-actions" aria-label="消息操作">
+          <button class="message-action" type="button" data-message-action="delete-round" data-index="${index}" aria-label="删除这一轮及之后的消息" title="删除" ${disabled}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 7h12M10 7V5.5A1.5 1.5 0 0 1 11.5 4h1A1.5 1.5 0 0 1 14 5.5V7m-6 0 .7 11.1A1.4 1.4 0 0 0 10.1 19h3.8a1.4 1.4 0 0 0 1.4-1.3L16 7M9.5 10.5v5M14.5 10.5v5"/>
+            </svg>
+          </button>
+          <button class="message-action" type="button" data-message-action="resend-round" data-index="${index}" aria-label="重新发送本轮用户消息" title="${canResend ? "重新发送" : "没有可重新发送的用户消息"}" ${resendDisabled}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 12a8 8 0 0 1 13.7-5.6L20 8M20 4v4h-4M20 12a8 8 0 0 1-13.7 5.6L4 16M4 20v-4h4"/>
+            </svg>
+          </button>
+        </div>
+  `;
+}
+
 function messageTemplate(message, index) {
   return `
-    <article class="message" data-tone="${escapeHtml(message.tone)}" data-index="${index}">
+    <article class="message" data-role="${escapeHtml(message.role)}" data-tone="${escapeHtml(message.tone)}" data-index="${index}">
       <div class="avatar-wrap">
         ${avatarTemplate(message)}
         <div class="meta">
@@ -104,10 +140,7 @@ function messageTemplate(message, index) {
           <span class="time">${escapeHtml(message.time)}</span>
         </div>
         <p class="bubble-text">${escapeHtml(message.content || "正在输入...")}</p>
-        <div class="bubble-actions" aria-label="消息操作">
-          <button type="button" aria-label="复制消息">C</button>
-          <button type="button" aria-label="编辑消息">E</button>
-        </div>
+        ${message.role === "assistant" ? assistantActionsTemplate(index) : ""}
       </div>
     </article>
   `;
@@ -260,6 +293,12 @@ function setBusy(busy) {
   conversationList.querySelectorAll(".history-item button").forEach((button) => {
     button.disabled = busy;
   });
+  messageList.querySelectorAll(".message-action").forEach((button) => {
+    const cannotResend =
+      button.dataset.messageAction === "resend-round" &&
+      findRoundUserIndex(Number(button.dataset.index)) < 0;
+    button.disabled = busy || cannotResend;
+  });
 }
 
 async function fetchJson(path, options = {}) {
@@ -277,6 +316,24 @@ async function refreshConversations() {
   const data = await fetchJson("/api/conversations");
   conversations = data.conversations || [];
   renderConversations();
+}
+
+async function saveCurrentConversationMessages() {
+  if (!currentConversationId) {
+    throw new Error("当前没有可保存的会话");
+  }
+
+  const data = await fetchJson(`/api/conversations/${encodeURIComponent(currentConversationId)}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messages: toConversationMessages(),
+    }),
+  });
+
+  return data.conversation;
 }
 
 function applyConversation(conversation) {
@@ -392,6 +449,66 @@ async function requestAssistantReply(assistantIndex) {
   }
 }
 
+async function deleteRoundFromAssistant(assistantIndex) {
+  if (isBusy || chatMessages[assistantIndex]?.role !== "assistant") return;
+
+  const previousMessages = chatMessages;
+  chatMessages = chatMessages.slice(0, roundStartIndex(assistantIndex));
+  setBusy(true);
+  renderMessages();
+
+  try {
+    await saveCurrentConversationMessages();
+    await refreshConversations();
+  } catch (error) {
+    chatMessages = previousMessages;
+    renderMessages();
+    appendMessage({
+      role: "assistant",
+      meta: "错误",
+      content: `删除消息失败：${error.message}`,
+    });
+  } finally {
+    setBusy(false);
+    messageInput.focus();
+  }
+}
+
+async function resendRoundFromAssistant(assistantIndex) {
+  if (isBusy || chatMessages[assistantIndex]?.role !== "assistant") return;
+
+  const userIndex = findRoundUserIndex(assistantIndex);
+  const userMessage = chatMessages[userIndex];
+  if (!userMessage?.content.trim()) return;
+
+  setBusy(true);
+  chatMessages = chatMessages.slice(0, userIndex);
+  renderMessages();
+  appendMessage({ role: "user", content: userMessage.content });
+
+  const nextAssistantIndex = appendMessage({
+    role: "assistant",
+    content: "",
+    meta: "连接中",
+  });
+
+  try {
+    await requestAssistantReply(nextAssistantIndex);
+    updateMessage(nextAssistantIndex, {
+      meta: chatMessages[nextAssistantIndex].content ? "回复" : "空回复",
+    });
+    await refreshConversations();
+  } catch (error) {
+    updateMessage(nextAssistantIndex, {
+      meta: "错误",
+      content: `后端调用失败：${error.message}`,
+    });
+  } finally {
+    setBusy(false);
+    messageInput.focus();
+  }
+}
+
 document.querySelectorAll(".tool-btn, .mini-btn").forEach((button) => {
   button.addEventListener("click", () => {
     const action = button.dataset.action || "action";
@@ -442,6 +559,23 @@ conversationList.addEventListener("click", async (event) => {
       }),
     ];
     renderMessages();
+  }
+});
+
+messageList.addEventListener("click", async (event) => {
+  const button = event.target.closest(".message-action");
+  if (!button) return;
+
+  const assistantIndex = Number(button.dataset.index);
+  if (!Number.isInteger(assistantIndex)) return;
+
+  if (button.dataset.messageAction === "delete-round") {
+    await deleteRoundFromAssistant(assistantIndex);
+    return;
+  }
+
+  if (button.dataset.messageAction === "resend-round") {
+    await resendRoundFromAssistant(assistantIndex);
   }
 });
 

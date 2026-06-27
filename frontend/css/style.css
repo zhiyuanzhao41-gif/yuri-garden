@@ -531,20 +531,55 @@ body {
 }
 
 .bubble-actions {
-  display: none;
+  display: flex;
   justify-content: flex-end;
   gap: 8px;
   margin-top: 10px;
   color: #99abbe;
+  opacity: 0.72;
+  transition: opacity 0.18s ease;
 }
 
 .bubble-actions button {
-  border: 0;
-  background: transparent;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(31, 18, 27, 0.54);
   color: inherit;
   padding: 0;
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
+  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.bubble-actions svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.message:hover .bubble-actions,
+.message:focus-within .bubble-actions {
+  opacity: 1;
+}
+
+.bubble-actions button:hover:not(:disabled),
+.bubble-actions button:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(231, 179, 210, 0.34);
+  background: rgba(65, 38, 52, 0.76);
+  color: #e7b3d2;
+  outline: none;
+}
+
+.bubble-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .composer {

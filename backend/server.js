@@ -183,6 +183,29 @@ app.get('/api/conversations/:id', async (req, res) => {
   }
 });
 
+app.patch('/api/conversations/:id', async (req, res) => {
+  const { messages } = req.body ?? {};
+
+  if (!Array.isArray(messages)) {
+    return res.status(400).json({ error: 'messages must be an array' });
+  }
+
+  try {
+    const existingConversation = await readConversation(req.params.id);
+    const savedMessages = messages.map(normalizeMessage);
+    const conversation = await writeConversation({
+      ...existingConversation,
+      title: titleFromMessages(savedMessages),
+      updatedAt: new Date().toISOString(),
+      messages: savedMessages,
+    });
+
+    res.json({ conversation });
+  } catch (error) {
+    handleJsonError(res, error);
+  }
+});
+
 app.delete('/api/conversations/:id', async (req, res) => {
   try {
     const filePath = conversationPath(req.params.id);
