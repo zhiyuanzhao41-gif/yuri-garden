@@ -55,6 +55,7 @@ function publicCharacter(character) {
     initials: character.initials,
     enabled: character.enabled,
     sortOrder: character.sortOrder,
+    information: character.information,
     welcomeMessage: character.welcomeMessage,
     assets: {
       avatar: normalizeAssetPath(character.id, character.assets?.avatar),
@@ -84,6 +85,10 @@ async function readCharacter(characterId) {
           : id.slice(0, 2).toUpperCase(),
       enabled: metadata.enabled !== false,
       sortOrder: Number.isFinite(metadata.sortOrder) ? metadata.sortOrder : 100,
+      information:
+        typeof metadata.information === 'string' && metadata.information.trim()
+          ? metadata.information.trim()
+          : '',
       welcomeMessage:
         typeof metadata.welcomeMessage === 'string' && metadata.welcomeMessage.trim()
           ? metadata.welcomeMessage.trim()

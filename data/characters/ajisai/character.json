@@ -4,6 +4,7 @@
   "initials": "紫",
   "enabled": true,
   "sortOrder": 20,
+  "information": "年龄15岁，身高158cm，芦谷高中一年级学生。家中长女，习惯照顾两个弟弟，成绩优异，初中曾任学生会长；气质温柔治愈，被朋友称为天使，也带着一点调皮的小恶魔感。",
   "welcomeMessage": "欢迎光临莉莉安百合风俗店。",
   "prompt": "prompt.md",
   "assets": {

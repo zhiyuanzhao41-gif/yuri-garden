@@ -262,18 +262,17 @@ body {
 }
 
 .history-item {
+  position: relative;
   width: 100%;
   margin: 0 0 8px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 36px;
-  gap: 8px;
-  align-items: stretch;
 }
 
 .history-open {
   display: grid;
   gap: 7px;
-  padding: 11px;
+  width: 100%;
+  min-height: 92px;
+  padding: 11px 42px 11px 11px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 10px;
   color: inherit;
@@ -328,40 +327,101 @@ body {
   color: var(--muted);
 }
 
-.history-delete {
+.history-menu-toggle {
+  position: absolute;
+  top: 9px;
+  right: 9px;
   display: grid;
   place-items: center;
-  width: 36px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  background: rgba(34, 20, 29, 0.56);
-  color: #d98aa8;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #c9b5d3;
   opacity: 0;
-  transform: translateX(4px);
-  transition: opacity 0.18s ease, transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+  transform: translateY(-2px);
+  transition: opacity 0.18s ease, transform 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
 }
 
-.history-delete svg {
-  width: 18px;
-  height: 18px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.9;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.history-menu-toggle span,
+.history-menu-toggle span::before,
+.history-menu-toggle span::after {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
-.history-item:hover .history-delete,
-.history-item:focus-within .history-delete,
-.history-item[aria-current="true"] .history-delete {
+.history-menu-toggle span {
+  position: relative;
+}
+
+.history-menu-toggle span::before,
+.history-menu-toggle span::after {
+  position: absolute;
+  left: 0;
+  content: "";
+}
+
+.history-menu-toggle span::before {
+  top: -6px;
+}
+
+.history-menu-toggle span::after {
+  top: 6px;
+}
+
+.history-item:hover .history-menu-toggle,
+.history-item:focus-within .history-menu-toggle,
+.history-item[aria-current="true"] .history-menu-toggle,
+.history-menu-toggle[aria-expanded="true"] {
   opacity: 1;
-  transform: translateX(0);
+  transform: translateY(0);
+}
+
+.history-menu-toggle:hover:not(:disabled),
+.history-menu-toggle:focus-visible,
+.history-menu-toggle[aria-expanded="true"] {
+  color: #f0dceb;
+  box-shadow: inset 0 0 0 1px rgba(231, 179, 210, 0.18);
+  outline: none;
+}
+
+.history-menu {
+  position: absolute;
+  top: 42px;
+  right: 9px;
+  z-index: 3;
+  min-width: 76px;
+  padding: 5px;
+  border: 1px solid rgba(231, 179, 210, 0.22);
+  border-radius: 8px;
+  background: rgba(30, 19, 28, 0.96);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+}
+
+.history-menu[hidden] {
+  display: none;
+}
+
+.history-delete {
+  width: 100%;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #e9a1b9;
+  font-size: 0.84rem;
+  text-align: left;
 }
 
 .history-delete:hover:not(:disabled),
 .history-delete:focus-visible {
-  border-color: rgba(231, 179, 210, 0.34);
-  background: rgba(65, 38, 52, 0.9);
+  background: rgba(122, 56, 83, 0.36);
+  color: #ffd6e1;
   outline: none;
 }
 

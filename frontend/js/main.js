@@ -16,6 +16,8 @@ const composer = document.getElementById("composer");
 const messageInput = document.getElementById("messageInput");
 const conversationList = document.getElementById("conversationList");
 const newConversationButton = document.getElementById("newConversationButton");
+const characterNoticeName = document.getElementById("characterNoticeName");
+const characterNoticeInformation = document.getElementById("characterNoticeInformation");
 
 const avatarUrls = {
   user: "./assets/avatars/user.jpg",
@@ -25,6 +27,7 @@ const fallbackCharacter = {
   id: "sakiko",
   name: "丰川祥子",
   initials: "祥",
+  information: "",
   assets: {
     avatar: null,
     cover: null,
@@ -53,6 +56,19 @@ async function loadActiveCharacter() {
   } catch (error) {
     activeCharacter = fallbackCharacter;
   }
+
+  renderCharacterNotice();
+}
+
+function renderCharacterNotice() {
+  if (characterNoticeName) {
+    characterNoticeName.textContent = activeCharacter.name || "角色资料";
+  }
+
+  if (characterNoticeInformation) {
+    characterNoticeInformation.textContent =
+      activeCharacter.information || "暂未填写角色核心个人信息。";
+  }
 }
 
 let currentConversationId = null;
@@ -65,6 +81,7 @@ let conversationPressTriggered = false;
 let conversationPressStartX = 0;
 let conversationPressStartY = 0;
 let suppressNextConversationClickId = null;
+let openConversationMenuId = null;
 
 function escapeHtml(value) {
   return String(value)
@@ -180,6 +197,8 @@ function messageTemplate(message, index) {
 }
 
 function historyItemTemplate(conversation) {
+  const isMenuOpen = conversation.id === openConversationMenuId;
+
   return `
     <div
       class="history-item"
@@ -193,11 +212,18 @@ function historyItemTemplate(conversation) {
           <span class="history-meta">${escapeHtml(formatHistoryTime(conversation.updatedAt))} · ${conversation.messageCount || 0} 条消息</span>
         </span>
       </button>
-      <button class="history-delete" type="button" aria-label="删除会话" ${isBusy ? "disabled" : ""}>
-        <svg viewBox="0 0 24 24">
-          <path d="M6 7h12M10 7V5.5A1.5 1.5 0 0 1 11.5 4h1A1.5 1.5 0 0 1 14 5.5V7m-6 0 .7 11.1A1.4 1.4 0 0 0 10.1 19h3.8a1.4 1.4 0 0 0 1.4-1.3L16 7M9.5 10.5v5M14.5 10.5v5"/>
-        </svg>
+      <button
+        class="history-menu-toggle"
+        type="button"
+        aria-label="打开会话操作"
+        aria-expanded="${isMenuOpen ? "true" : "false"}"
+        ${isBusy ? "disabled" : ""}
+      >
+        <span aria-hidden="true"></span>
       </button>
+      <div class="history-menu" ${isMenuOpen ? "" : "hidden"}>
+        <button class="history-delete" type="button" ${isBusy ? "disabled" : ""}>删除</button>
+      </div>
     </div>
   `;
 }
@@ -209,8 +235,13 @@ function renderMessages() {
 
 function renderConversations() {
   if (!conversations.length) {
+    openConversationMenuId = null;
     conversationList.innerHTML = '<p class="history-empty">暂无会话</p>';
     return;
+  }
+
+  if (!conversations.some((conversation) => conversation.id === openConversationMenuId)) {
+    openConversationMenuId = null;
   }
 
   conversationList.innerHTML = conversations.map(historyItemTemplate).join("");
@@ -239,6 +270,9 @@ async function deleteConversation(conversationId) {
     );
 
     conversations = conversations.filter((item) => item.id !== conversationId);
+    if (openConversationMenuId === conversationId) {
+      openConversationMenuId = null;
+    }
 
     if (currentConversationId === conversationId) {
       currentConversationId = null;
@@ -326,6 +360,9 @@ function setComposerEnabled(enabled) {
 
 function setBusy(busy) {
   isBusy = busy;
+  if (busy) {
+    openConversationMenuId = null;
+  }
   setComposerEnabled(!busy && Boolean(currentConversationId));
   if (newConversationButton) newConversationButton.disabled = busy;
   conversationList.querySelectorAll(".history-item button").forEach((button) => {
@@ -390,6 +427,7 @@ async function saveCurrentConversationMessages() {
 }
 
 function applyConversation(conversation) {
+  openConversationMenuId = null;
   currentConversationId = conversation.id;
   chatMessages = (conversation.messages || []).map(decorateMessage);
   renderMessages();
@@ -587,6 +625,15 @@ document.querySelectorAll(".tool-btn, .mini-btn").forEach((button) => {
 });
 
 conversationList.addEventListener("click", async (event) => {
+  const menuToggle = event.target.closest(".history-menu-toggle");
+  if (menuToggle) {
+    event.stopPropagation();
+    const item = menuToggle.closest(".history-item");
+    openConversationMenuId = openConversationMenuId === item?.dataset.id ? null : item?.dataset.id;
+    renderConversations();
+    return;
+  }
+
   const deleteButton = event.target.closest(".history-delete");
   if (deleteButton) {
     event.stopPropagation();
@@ -606,6 +653,8 @@ conversationList.addEventListener("click", async (event) => {
     return;
   }
 
+  openConversationMenuId = null;
+
   try {
     await loadConversation(item.dataset.id);
   } catch (error) {
@@ -618,6 +667,18 @@ conversationList.addEventListener("click", async (event) => {
     ];
     renderMessages();
   }
+});
+
+document.addEventListener("click", (event) => {
+  if (!openConversationMenuId || event.target.closest(".history-item")) return;
+  openConversationMenuId = null;
+  renderConversations();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || !openConversationMenuId) return;
+  openConversationMenuId = null;
+  renderConversations();
 });
 
 messageList.addEventListener("click", async (event) => {
@@ -639,7 +700,13 @@ messageList.addEventListener("click", async (event) => {
 
 conversationList.addEventListener("pointerdown", (event) => {
   const item = event.target.closest(".history-item");
-  if (!item || event.pointerType !== "touch" || event.target.closest(".history-delete")) return;
+  if (
+    !item ||
+    event.pointerType !== "touch" ||
+    event.target.closest(".history-delete, .history-menu-toggle, .history-menu")
+  ) {
+    return;
+  }
 
   conversationPressTarget = item;
   conversationPressTriggered = false;
