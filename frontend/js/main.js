@@ -19,7 +19,7 @@ const newConversationButton = document.getElementById("newConversationButton");
 
 const avatarUrls = {
   user: "./assets/avatars/user.jpg",
-  assistant: "./assets/avatars/lilian.jpg",
+  assistant: "./assets/avatars/sakiko.jpg",
 };
 
 let currentConversationId = null;
