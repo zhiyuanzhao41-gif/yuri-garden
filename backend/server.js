@@ -10,18 +10,139 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SYSTEM_PROMPT_PATH = resolve(__dirname, 'prompts', 'sakiko.md');
-const CONVERSATIONS_DIR = resolve(__dirname, 'conversations');
 const FRONTEND_DIR = resolve(__dirname, '..', 'frontend');
+const DATA_DIR = resolve(__dirname, '..', 'data');
+const CHARACTERS_DIR = resolve(DATA_DIR, 'characters');
+const CONVERSATIONS_DIR = resolve(DATA_DIR, 'conversation');
+const LEGACY_CONVERSATIONS_DIR = resolve(__dirname, 'conversations');
 const INDEX_HTML_PATH = resolve(FRONTEND_DIR, 'index.html');
-const WELCOME_MESSAGE = '欢迎光临莉莉安百合风俗店。';
+const DEFAULT_CHARACTER_ID = 'sakiko';
+const FALLBACK_WELCOME_MESSAGE = '欢迎光临莉莉安百合风俗店。';
 
 app.set('trust proxy', true);
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 
-async function loadSystemPrompt() {
-  return (await readFile(SYSTEM_PROMPT_PATH, 'utf8')).trim();
+function isCharacterId(value) {
+  return typeof value === 'string' && /^[a-z0-9_-]+$/i.test(value);
+}
+
+function characterPath(characterId, ...segments) {
+  if (!isCharacterId(characterId)) {
+    const error = new Error('Invalid character id');
+    error.status = 400;
+    throw error;
+  }
+
+  return resolve(CHARACTERS_DIR, characterId, ...segments);
+}
+
+function normalizeAssetPath(characterId, fileName) {
+  if (typeof fileName !== 'string' || !fileName.trim()) return null;
+  if (fileName.includes('/') || fileName.includes('\\') || fileName.includes('..')) return null;
+  if (!isCharacterAssetFile(fileName)) return null;
+  return `/characters/${characterId}/${fileName}`;
+}
+
+function isCharacterAssetFile(fileName) {
+  return typeof fileName === 'string' && /\.(?:avif|gif|jpe?g|png|webp)$/i.test(fileName);
+}
+
+function publicCharacter(character) {
+  return {
+    id: character.id,
+    name: character.name,
+    initials: character.initials,
+    enabled: character.enabled,
+    sortOrder: character.sortOrder,
+    welcomeMessage: character.welcomeMessage,
+    assets: {
+      avatar: normalizeAssetPath(character.id, character.assets?.avatar),
+      cover: normalizeAssetPath(character.id, character.assets?.cover),
+    },
+  };
+}
+
+async function readCharacter(characterId) {
+  const metadataPath = characterPath(characterId, 'character.json');
+  try {
+    const metadata = JSON.parse(await readFile(metadataPath, 'utf8'));
+    const id = metadata.id || characterId;
+
+    if (id !== characterId || !isCharacterId(id)) {
+      const error = new Error(`Invalid character metadata for ${characterId}`);
+      error.status = 500;
+      throw error;
+    }
+
+    return {
+      id,
+      name: typeof metadata.name === 'string' && metadata.name.trim() ? metadata.name.trim() : id,
+      initials:
+        typeof metadata.initials === 'string' && metadata.initials.trim()
+          ? metadata.initials.trim().slice(0, 2)
+          : id.slice(0, 2).toUpperCase(),
+      enabled: metadata.enabled !== false,
+      sortOrder: Number.isFinite(metadata.sortOrder) ? metadata.sortOrder : 100,
+      welcomeMessage:
+        typeof metadata.welcomeMessage === 'string' && metadata.welcomeMessage.trim()
+          ? metadata.welcomeMessage.trim()
+          : FALLBACK_WELCOME_MESSAGE,
+      prompt:
+        typeof metadata.prompt === 'string' && metadata.prompt.trim()
+          ? metadata.prompt.trim()
+          : 'prompt.md',
+      assets: metadata.assets && typeof metadata.assets === 'object' ? metadata.assets : {},
+    };
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      error.status = 404;
+      error.message = 'Character not found';
+    }
+    throw error;
+  }
+}
+
+async function listCharacters() {
+  const entries = await readdir(CHARACTERS_DIR, { withFileTypes: true });
+  const characters = await Promise.all(
+    entries
+      .filter((entry) => entry.isDirectory() && isCharacterId(entry.name))
+      .map((entry) => readCharacter(entry.name)),
+  );
+
+  return characters
+    .filter((character) => character.enabled)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
+}
+
+async function getCharacterOrDefault(characterId) {
+  if (isCharacterId(characterId)) {
+    try {
+      const character = await readCharacter(characterId);
+      if (character.enabled) return character;
+    } catch (error) {
+      if (error.status !== 404) throw error;
+    }
+  }
+
+  return readCharacter(DEFAULT_CHARACTER_ID);
+}
+
+async function loadSystemPrompt(characterId) {
+  const character = await getCharacterOrDefault(characterId);
+  const promptFile = character.prompt;
+
+  if (promptFile.includes('/') || promptFile.includes('\\') || promptFile.includes('..')) {
+    const error = new Error(`Invalid prompt file for ${character.id}`);
+    error.status = 500;
+    throw error;
+  }
+
+  return {
+    character,
+    prompt: (await readFile(characterPath(character.id, promptFile), 'utf8')).trim(),
+  };
 }
 
 function formatDisplayTime(date) {
@@ -60,6 +181,7 @@ function summarizeConversation(conversation) {
 
   return {
     id: conversation.id,
+    characterId: conversation.characterId || DEFAULT_CHARACTER_ID,
     title: conversation.title,
     preview: previewMessage?.content.trim().slice(0, 60) || '还没有开始对话',
     createdAt: conversation.createdAt,
@@ -80,47 +202,104 @@ async function ensureConversationDir() {
   await mkdir(CONVERSATIONS_DIR, { recursive: true });
 }
 
-function conversationPath(id) {
-  assertConversationId(id);
-  return resolve(CONVERSATIONS_DIR, `${id}.json`);
+async function ensureCharacterConversationDir(characterId) {
+  await mkdir(conversationDir(characterId), { recursive: true });
 }
 
-async function readConversation(id) {
-  const filePath = conversationPath(id);
-  try {
-    return JSON.parse(await readFile(filePath, 'utf8'));
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      error.status = 404;
-      error.message = 'Conversation not found';
-    }
+function conversationDir(characterId) {
+  if (!isCharacterId(characterId)) {
+    const error = new Error('Invalid character id');
+    error.status = 400;
     throw error;
   }
+
+  return resolve(CONVERSATIONS_DIR, characterId);
+}
+
+function conversationPath(characterId, id) {
+  assertConversationId(id);
+  return resolve(conversationDir(characterId), `${id}.json`);
+}
+
+async function conversationSearchDirs(preferredCharacterId) {
+  const dirs = [];
+  const seen = new Set();
+
+  function addDir(dir) {
+    if (seen.has(dir)) return;
+    seen.add(dir);
+    dirs.push(dir);
+  }
+
+  if (isCharacterId(preferredCharacterId)) {
+    addDir(conversationDir(preferredCharacterId));
+  }
+
+  try {
+    const characters = await listCharacters();
+    for (const character of characters) {
+      addDir(conversationDir(character.id));
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+
+  addDir(conversationDir(DEFAULT_CHARACTER_ID));
+  addDir(LEGACY_CONVERSATIONS_DIR);
+
+  return dirs;
+}
+
+async function findConversationFile(id, preferredCharacterId) {
+  assertConversationId(id);
+
+  for (const dir of await conversationSearchDirs(preferredCharacterId)) {
+    const filePath = resolve(dir, `${id}.json`);
+    try {
+      await access(filePath);
+      return filePath;
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+
+  const error = new Error('Conversation not found');
+  error.status = 404;
+  throw error;
+}
+
+async function readConversation(id, preferredCharacterId) {
+  return JSON.parse(await readFile(await findConversationFile(id, preferredCharacterId), 'utf8'));
 }
 
 async function writeConversation(conversation) {
-  await ensureConversationDir();
+  const characterId = isCharacterId(conversation.characterId)
+    ? conversation.characterId
+    : DEFAULT_CHARACTER_ID;
+
+  await ensureCharacterConversationDir(characterId);
   await writeFile(
-    conversationPath(conversation.id),
+    conversationPath(characterId, conversation.id),
     `${JSON.stringify(conversation, null, 2)}\n`,
     'utf8',
   );
   return conversation;
 }
 
-function createConversation() {
+function createConversation(character) {
   const now = new Date();
   const nowIso = now.toISOString();
 
   return {
     id: randomUUID(),
+    characterId: character.id,
     title: '新会话',
     createdAt: nowIso,
     updatedAt: nowIso,
     messages: [
       {
         role: 'assistant',
-        content: WELCOME_MESSAGE,
+        content: character.welcomeMessage,
         time: formatDisplayTime(now),
         meta: '欢迎',
       },
@@ -130,11 +309,45 @@ function createConversation() {
 
 async function conversationExists(id) {
   try {
-    await access(conversationPath(id));
+    await findConversationFile(id);
     return true;
   } catch (error) {
     if (error.code === 'ENOENT') return false;
+    if (error.status === 404) return false;
     throw error;
+  }
+}
+
+async function migrateLegacyConversations() {
+  try {
+    const fileNames = await readdir(LEGACY_CONVERSATIONS_DIR);
+
+    await Promise.all(
+      fileNames
+        .filter((fileName) => fileName.endsWith('.json'))
+        .map(async (fileName) => {
+          const legacyPath = resolve(LEGACY_CONVERSATIONS_DIR, fileName);
+          const conversation = JSON.parse(await readFile(legacyPath, 'utf8'));
+          const characterId = isCharacterId(conversation.characterId)
+            ? conversation.characterId
+            : DEFAULT_CHARACTER_ID;
+          const targetPath = conversationPath(characterId, conversation.id);
+
+          try {
+            await access(targetPath);
+            return;
+          } catch (error) {
+            if (error.code !== 'ENOENT') throw error;
+          }
+
+          await writeConversation({
+            ...conversation,
+            characterId,
+          });
+        }),
+    );
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
   }
 }
 
@@ -146,18 +359,43 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/api/conversations', async (_req, res) => {
+app.get('/api/characters', async (_req, res) => {
+  try {
+    res.json({ characters: (await listCharacters()).map(publicCharacter) });
+  } catch (error) {
+    handleJsonError(res, error);
+  }
+});
+
+app.get('/api/characters/:id', async (req, res) => {
+  try {
+    const character = await readCharacter(req.params.id);
+    if (!character.enabled) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+    res.json({ character: publicCharacter(character) });
+  } catch (error) {
+    handleJsonError(res, error);
+  }
+});
+
+app.get('/api/conversations', async (req, res) => {
   try {
     await ensureConversationDir();
-    const fileNames = await readdir(CONVERSATIONS_DIR);
+    const characterId = isCharacterId(req.query.characterId) ? req.query.characterId : DEFAULT_CHARACTER_ID;
+    const dir = conversationDir(characterId);
+
+    await mkdir(dir, { recursive: true });
+    const fileNames = await readdir(dir);
     const conversations = await Promise.all(
       fileNames
         .filter((fileName) => fileName.endsWith('.json'))
-        .map(async (fileName) => JSON.parse(await readFile(resolve(CONVERSATIONS_DIR, fileName), 'utf8'))),
+        .map(async (fileName) => JSON.parse(await readFile(resolve(dir, fileName), 'utf8'))),
     );
 
     res.json({
       conversations: conversations
+        .filter((conversation) => (conversation.characterId || DEFAULT_CHARACTER_ID) === characterId)
         .map(summarizeConversation)
         .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)),
     });
@@ -166,9 +404,10 @@ app.get('/api/conversations', async (_req, res) => {
   }
 });
 
-app.post('/api/conversations', async (_req, res) => {
+app.post('/api/conversations', async (req, res) => {
   try {
-    const conversation = await writeConversation(createConversation());
+    const character = await getCharacterOrDefault(req.body?.characterId);
+    const conversation = await writeConversation(createConversation(character));
     res.status(201).json({ conversation });
   } catch (error) {
     handleJsonError(res, error);
@@ -177,7 +416,7 @@ app.post('/api/conversations', async (_req, res) => {
 
 app.get('/api/conversations/:id', async (req, res) => {
   try {
-    res.json({ conversation: await readConversation(req.params.id) });
+    res.json({ conversation: await readConversation(req.params.id, req.query.characterId) });
   } catch (error) {
     handleJsonError(res, error);
   }
@@ -191,7 +430,7 @@ app.patch('/api/conversations/:id', async (req, res) => {
   }
 
   try {
-    const existingConversation = await readConversation(req.params.id);
+    const existingConversation = await readConversation(req.params.id, req.body?.characterId);
     const savedMessages = messages.map(normalizeMessage);
     const conversation = await writeConversation({
       ...existingConversation,
@@ -208,7 +447,7 @@ app.patch('/api/conversations/:id', async (req, res) => {
 
 app.delete('/api/conversations/:id', async (req, res) => {
   try {
-    const filePath = conversationPath(req.params.id);
+    const filePath = await findConversationFile(req.params.id, req.query.characterId);
 
     try {
       await unlink(filePath);
@@ -226,7 +465,7 @@ app.delete('/api/conversations/:id', async (req, res) => {
 });
 
 app.post('/api/chat', async (req, res) => {
-  const { conversationId, messages } = req.body ?? {};
+  const { conversationId, messages, characterId } = req.body ?? {};
 
   if (!Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: 'messages must be a non-empty array' });
@@ -246,12 +485,15 @@ app.post('/api/chat', async (req, res) => {
     return res.status(500).json({ error: 'Missing API_KEY in backend/.env' });
   }
 
+  let character;
   let systemPrompt;
   try {
-    systemPrompt = await loadSystemPrompt();
+    const promptData = await loadSystemPrompt(characterId);
+    character = promptData.character;
+    systemPrompt = promptData.prompt;
   } catch (error) {
     return res.status(500).json({
-      error: `Failed to load system prompt from backend/prompts/lilian.md: ${error.message}`,
+      error: `Failed to load system prompt for ${characterId || DEFAULT_CHARACTER_ID}: ${error.message}`,
     });
   }
 
@@ -325,7 +567,7 @@ app.post('/api/chat', async (req, res) => {
       }
     }
 
-    const existingConversation = await readConversation(conversationId);
+    const existingConversation = await readConversation(conversationId, characterId);
     const savedMessages = messages.map(normalizeMessage);
     const lastMessage = savedMessages.at(-1);
 
@@ -344,6 +586,7 @@ app.post('/api/chat', async (req, res) => {
 
     await writeConversation({
       ...existingConversation,
+      characterId: existingConversation.characterId || character.id,
       title: titleFromMessages(savedMessages),
       updatedAt: new Date().toISOString(),
       messages: savedMessages,
@@ -357,12 +600,29 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
+app.get('/characters/:id/:fileName', (req, res) => {
+  const { id, fileName } = req.params;
+
+  if (!isCharacterId(id) || fileName.includes('..') || !isCharacterAssetFile(fileName)) {
+    return res.status(404).end();
+  }
+
+  res.sendFile(characterPath(id, fileName));
+});
+
 app.use(express.static(FRONTEND_DIR));
 
 app.get(/^\/(?!api\/).*/, (_req, res) => {
   res.sendFile(INDEX_HTML_PATH);
 });
 
-app.listen(PORT, () => {
-  console.log(`AI chat backend is running at http://localhost:${PORT}`);
-});
+migrateLegacyConversations()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`AI chat backend is running at http://localhost:${PORT}`);
+    });
+  })
+  .catch((error) => {
+    console.error(`Failed to migrate legacy conversations: ${error.message}`);
+    process.exit(1);
+  });

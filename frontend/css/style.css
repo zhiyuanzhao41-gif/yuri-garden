@@ -88,6 +88,19 @@ body {
   min-width: 0;
 }
 
+.brand-link {
+  color: inherit;
+  text-decoration: none;
+  transition: transform 0.18s ease, opacity 0.18s ease;
+}
+
+.brand-link:hover,
+.brand-link:focus-visible {
+  transform: translateY(-1px);
+  opacity: 0.96;
+  outline: none;
+}
+
 .brand-mark {
   width: 42px;
   height: 42px;

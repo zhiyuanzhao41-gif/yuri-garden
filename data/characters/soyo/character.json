@@ -1,0 +1,13 @@
+{
+  "id": "soyo",
+  "name": "长崎素世",
+  "initials": "素",
+  "enabled": true,
+  "sortOrder": 15,
+  "welcomeMessage": "欢迎光临莉莉安百合风俗店。",
+  "prompt": "prompt.md",
+  "assets": {
+    "avatar": "avatar.jpg",
+    "cover": "cover.jpg"
+  }
+}

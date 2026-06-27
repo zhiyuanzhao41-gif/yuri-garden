@@ -19,8 +19,41 @@ const newConversationButton = document.getElementById("newConversationButton");
 
 const avatarUrls = {
   user: "./assets/avatars/user.jpg",
-  assistant: "./assets/avatars/sakiko.jpg",
 };
+
+const fallbackCharacter = {
+  id: "sakiko",
+  name: "丰川祥子",
+  initials: "祥",
+  assets: {
+    avatar: null,
+    cover: null,
+  },
+};
+
+let activeCharacter = fallbackCharacter;
+
+function assetUrl(path) {
+  if (!path) return "";
+  if (/^https?:\/\//i.test(path)) return path;
+  return `${API_BASE_URL}${path}`;
+}
+
+function getRequestedCharacterId() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("character") || fallbackCharacter.id;
+}
+
+async function loadActiveCharacter() {
+  const characterId = getRequestedCharacterId();
+
+  try {
+    const data = await fetchJson(`/api/characters/${encodeURIComponent(characterId)}`);
+    activeCharacter = data.character || fallbackCharacter;
+  } catch (error) {
+    activeCharacter = fallbackCharacter;
+  }
+}
 
 let currentConversationId = null;
 let conversations = [];
@@ -61,7 +94,7 @@ function formatHistoryTime(value) {
 }
 
 function defaultAvatarUrl(role) {
-  return role === "user" ? avatarUrls.user : avatarUrls.assistant;
+  return role === "user" ? avatarUrls.user : assetUrl(activeCharacter.assets?.avatar);
 }
 
 function decorateMessage(message) {
@@ -70,8 +103,8 @@ function decorateMessage(message) {
   return {
     role,
     content: typeof message?.content === "string" ? message.content : "",
-    initials: message?.initials ?? (role === "user" ? "你" : "AI"),
-    name: message?.name ?? (role === "user" ? "zzy" : "丰川祥子"),
+    initials: message?.initials ?? (role === "user" ? "你" : activeCharacter.initials || "AI"),
+    name: message?.name ?? (role === "user" ? "zzy" : activeCharacter.name),
     avatarUrl: message?.avatarUrl ?? defaultAvatarUrl(role),
     time: message?.time ?? formatTime(new Date()),
     tone: message?.tone ?? (role === "user" ? "highlight" : "soft"),
@@ -198,9 +231,12 @@ async function deleteConversation(conversationId) {
   setBusy(true);
 
   try {
-    await fetchJson(`/api/conversations/${encodeURIComponent(conversationId)}`, {
-      method: "DELETE",
-    });
+    await fetchJson(
+      `/api/conversations/${encodeURIComponent(conversationId)}?characterId=${encodeURIComponent(activeCharacter.id)}`,
+      {
+        method: "DELETE",
+      },
+    );
 
     conversations = conversations.filter((item) => item.id !== conversationId);
 
@@ -211,10 +247,12 @@ async function deleteConversation(conversationId) {
 
       if (conversations.length > 0) {
         const nextConversation = conversations[0];
-        const data = await fetchJson(`/api/conversations/${encodeURIComponent(nextConversation.id)}`);
+        const data = await fetchJson(
+          `/api/conversations/${encodeURIComponent(nextConversation.id)}?characterId=${encodeURIComponent(activeCharacter.id)}`,
+        );
         applyConversation(data.conversation);
       } else {
-        const data = await fetchJson("/api/conversations", { method: "POST" });
+        const data = await createConversationRequest();
         applyConversation(data.conversation);
       }
     }
@@ -313,9 +351,23 @@ async function fetchJson(path, options = {}) {
 }
 
 async function refreshConversations() {
-  const data = await fetchJson("/api/conversations");
+  const data = await fetchJson(
+    `/api/conversations?characterId=${encodeURIComponent(activeCharacter.id)}`,
+  );
   conversations = data.conversations || [];
   renderConversations();
+}
+
+function createConversationRequest() {
+  return fetchJson("/api/conversations", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      characterId: activeCharacter.id,
+    }),
+  });
 }
 
 async function saveCurrentConversationMessages() {
@@ -329,6 +381,7 @@ async function saveCurrentConversationMessages() {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
+      characterId: activeCharacter.id,
       messages: toConversationMessages(),
     }),
   });
@@ -347,7 +400,9 @@ async function loadConversation(conversationId) {
   setBusy(true);
 
   try {
-    const data = await fetchJson(`/api/conversations/${encodeURIComponent(conversationId)}`);
+    const data = await fetchJson(
+      `/api/conversations/${encodeURIComponent(conversationId)}?characterId=${encodeURIComponent(activeCharacter.id)}`,
+    );
     applyConversation(data.conversation);
   } finally {
     setBusy(false);
@@ -358,7 +413,7 @@ async function createConversation() {
   setBusy(true);
 
   try {
-    const data = await fetchJson("/api/conversations", { method: "POST" });
+    const data = await createConversationRequest();
     applyConversation(data.conversation);
     await refreshConversations();
   } finally {
@@ -373,12 +428,14 @@ async function bootConversations() {
     await refreshConversations();
 
     if (conversations.length > 0) {
-      const data = await fetchJson(`/api/conversations/${encodeURIComponent(conversations[0].id)}`);
+      const data = await fetchJson(
+        `/api/conversations/${encodeURIComponent(conversations[0].id)}?characterId=${encodeURIComponent(activeCharacter.id)}`,
+      );
       applyConversation(data.conversation);
       return;
     }
 
-    const data = await fetchJson("/api/conversations", { method: "POST" });
+    const data = await createConversationRequest();
     applyConversation(data.conversation);
     await refreshConversations();
   } catch (error) {
@@ -410,6 +467,7 @@ async function requestAssistantReply(assistantIndex) {
     },
     body: JSON.stringify({
       conversationId: currentConversationId,
+      characterId: activeCharacter.id,
       messages: toConversationMessages(),
     }),
   });
@@ -680,4 +738,9 @@ composer.addEventListener("submit", async (event) => {
   }
 });
 
-bootConversations();
+async function bootApp() {
+  await loadActiveCharacter();
+  await bootConversations();
+}
+
+bootApp();

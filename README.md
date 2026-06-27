@@ -8,7 +8,11 @@ AI聊天程序，调用大模型API实现角色扮演对话
 
 ## 角色提示词
 
-系统提示词放在 `backend/prompts/。修改这些 Markdown 文件即可调整人设、世界观、说话风格和回复规则；后端会在每次请求时读取该文件，并自动作为 `system` 消息发送给模型。
+角色资源放在 `data/characters/{角色id}/`。每个角色目录包含 `character.json`、`prompt.md`，以及可选的 `avatar.jpg` 和 `cover.jpg`。修改 `prompt.md` 即可调整人设、世界观、说话风格和回复规则；后端会在每次请求时读取对应角色的提示词，并自动作为 `system` 消息发送给模型。
+
+## 对话存档
+
+对话文件放在 `data/conversation/{角色id}/`。例如 `data/conversation/sakiko/` 保存祥子的会话，`data/conversation/ajisai/` 保存紫阳花的会话。
 
 ## 本地与 ngrok 访问
 

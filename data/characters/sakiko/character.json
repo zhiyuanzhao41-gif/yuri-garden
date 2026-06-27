@@ -1,0 +1,13 @@
+{
+  "id": "sakiko",
+  "name": "丰川祥子",
+  "initials": "祥",
+  "enabled": true,
+  "sortOrder": 10,
+  "welcomeMessage": "欢迎光临莉莉安百合风俗店。",
+  "prompt": "prompt.md",
+  "assets": {
+    "avatar": "avatar.jpg",
+    "cover": "cover.jpg"
+  }
+}
