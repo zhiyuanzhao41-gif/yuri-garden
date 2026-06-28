@@ -1,5 +1,5 @@
 export const avatarUrls = {
-  user: "./assets/avatars/user.jpg",
+  user: "./assets/user.jpg",
 };
 
 export const fallbackCharacter = {
