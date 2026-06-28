@@ -1,34 +1,8 @@
+import { API_BASE_URL, assetUrl } from "./app/api.js";
+import { escapeHtml } from "./app/html.js";
+
 const gardenButton = document.querySelector("[data-scroll-target]");
 const characterGrid = document.getElementById("characterGrid");
-
-function resolveApiBaseUrl() {
-  const { hostname, origin, protocol, port } = window.location;
-  const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "";
-  const isBackendOrigin = isLocalHost && port === "3000";
-
-  if (protocol === "file:" || (isLocalHost && !isBackendOrigin)) {
-    return "http://localhost:3000";
-  }
-
-  return origin;
-}
-
-const API_BASE_URL = resolveApiBaseUrl();
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function assetUrl(path) {
-  if (!path) return "";
-  if (/^https?:\/\//i.test(path)) return path;
-  return `${API_BASE_URL}${path}`;
-}
 
 function openCharacterChat(card) {
   const characterId = card?.dataset.characterId;
@@ -43,7 +17,7 @@ function openCharacterChat(card) {
 function characterCardTemplate(character) {
   const coverUrl = assetUrl(character.assets?.cover);
   const image = coverUrl
-    ? `<img src="${escapeHtml(coverUrl)}" alt="${escapeHtml(character.name)}" onerror="showCharacterImageFallback(this);">`
+    ? `<img src="${escapeHtml(coverUrl)}" alt="${escapeHtml(character.name)}">`
     : `<span>${escapeHtml(character.initials || character.name)}</span>`;
   const placeholderClass = coverUrl ? "" : " is-placeholder";
 
@@ -82,6 +56,10 @@ function bindCharacterCards() {
       if (event.key !== "Enter" && event.key !== " ") return;
       event.preventDefault();
       openCharacterChat(card);
+    });
+
+    card.querySelector("img")?.addEventListener("error", (event) => {
+      showCharacterImageFallback(event.currentTarget);
     });
   });
 }
