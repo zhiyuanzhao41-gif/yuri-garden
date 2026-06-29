@@ -3,4 +3,6 @@
 /data/app.sqlite*
 .claude
 
+/backend/.env
+/backend/node_modules
 
