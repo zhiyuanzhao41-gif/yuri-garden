@@ -37,9 +37,15 @@
         <button class="tool-btn" type="button" data-action="language" aria-label="语言">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5zM7 9h10M9 5c0 4 0 10 5 14M15 5c0 4 0 10-5 14" /></svg>
         </button>
-        <button class="tool-btn" type="button" data-action="profile" aria-label="资料">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" /></svg>
-        </button>
+        <div class="profile-menu-wrap">
+          <button class="tool-btn" id="profileMenuButton" type="button" data-action="profile" aria-label="账户菜单" aria-haspopup="menu" aria-expanded="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" /></svg>
+          </button>
+          <div class="profile-menu" id="profileMenu" role="menu" hidden>
+            <button class="profile-menu-item" type="button" role="menuitem" data-profile-action="page">个人页面</button>
+            <button class="profile-menu-item profile-menu-danger" type="button" role="menuitem" data-profile-action="logout">退出账户</button>
+          </div>
+        </div>
       </div>
     </header>
 

@@ -1,5 +1,5 @@
 import { fallbackCharacter, state } from "./chat/state.js";
-import { getCurrentUser, loginRedirectUrl } from "./app/auth.js";
+import { getCurrentUser, loginRedirectUrl, logout } from "./app/auth.js";
 import {
   createConversationRequest,
   deleteConversationRequest,
@@ -25,6 +25,8 @@ const elements = {
   messageInput: document.getElementById("messageInput"),
   conversationList: document.getElementById("conversationList"),
   newConversationButton: document.getElementById("newConversationButton"),
+  profileMenuButton: document.getElementById("profileMenuButton"),
+  profileMenu: document.getElementById("profileMenu"),
   characterNoticeName: document.getElementById("characterNoticeName"),
   characterNoticeInformation: document.getElementById("characterNoticeInformation"),
 };
@@ -92,6 +94,13 @@ function setBusy(busy) {
       findRoundUserIndex(state, Number(button.dataset.index)) < 0;
     button.disabled = busy || cannotResend;
   });
+}
+
+function setProfileMenuOpen(isOpen) {
+  if (!elements.profileMenu || !elements.profileMenuButton) return;
+
+  elements.profileMenu.hidden = !isOpen;
+  elements.profileMenuButton.setAttribute("aria-expanded", String(isOpen));
 }
 
 async function refreshConversations() {
@@ -289,8 +298,40 @@ function bindToolbar() {
       if (action === "prompt") {
         elements.messageInput.value = "请用温柔自然的语气回复我。";
         elements.messageInput.focus();
+        return;
+      }
+
+      if (action === "profile") {
+        setProfileMenuOpen(elements.profileMenu?.hidden);
       }
     });
+  });
+}
+
+function bindProfileMenu() {
+  if (!elements.profileMenu || !elements.profileMenuButton) return;
+
+  elements.profileMenu.addEventListener("click", async (event) => {
+    const item = event.target.closest("[data-profile-action]");
+    if (!item) return;
+
+    const action = item.dataset.profileAction;
+    if (action === "page") {
+      setProfileMenuOpen(false);
+      return;
+    }
+
+    if (action !== "logout") return;
+
+    setProfileMenuOpen(false);
+    const confirmed = window.confirm("是否退出当前账户？");
+    if (!confirmed) return;
+
+    try {
+      await logout();
+    } finally {
+      redirectToLogin();
+    }
   });
 }
 
@@ -405,10 +446,23 @@ function bindGlobalEvents() {
     renderAllConversations();
   });
 
+  document.addEventListener("click", (event) => {
+    if (elements.profileMenu?.hidden || event.target.closest(".profile-menu-wrap")) return;
+    setProfileMenuOpen(false);
+  });
+
   document.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape" || !state.openConversationMenuId) return;
-    state.openConversationMenuId = null;
-    renderAllConversations();
+    if (event.key !== "Escape") return;
+
+    if (state.openConversationMenuId) {
+      state.openConversationMenuId = null;
+      renderAllConversations();
+    }
+
+    if (!elements.profileMenu?.hidden) {
+      setProfileMenuOpen(false);
+      elements.profileMenuButton?.focus();
+    }
   });
 }
 
@@ -488,6 +542,7 @@ function bindComposer() {
 
 function bindEvents() {
   bindToolbar();
+  bindProfileMenu();
   bindConversationList();
   bindGlobalEvents();
   bindMessageActions();

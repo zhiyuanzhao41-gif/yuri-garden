@@ -48,3 +48,11 @@ export async function register(username, password) {
   hasLoadedUser = true;
   return currentUser;
 }
+
+export async function logout() {
+  await fetchJson("/api/auth/logout", {
+    method: "POST",
+  });
+  currentUser = null;
+  hasLoadedUser = true;
+}

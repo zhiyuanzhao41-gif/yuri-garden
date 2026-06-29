@@ -71,6 +71,8 @@ body {
 }
 
 .topbar {
+  position: relative;
+  z-index: 20;
   min-height: 62px;
   display: flex;
   align-items: center;
@@ -144,6 +146,10 @@ body {
   justify-content: flex-end;
 }
 
+.profile-menu-wrap {
+  position: relative;
+}
+
 .tool-btn,
 .mini-btn,
 .send-btn {
@@ -181,7 +187,56 @@ body {
   stroke-linejoin: round;
 }
 
+.profile-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 10;
+  min-width: 132px;
+  padding: 6px;
+  border: 1px solid rgba(231, 179, 210, 0.22);
+  border-radius: 8px;
+  background: rgba(30, 19, 28, 0.96);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.34);
+}
+
+.profile-menu[hidden] {
+  display: none;
+}
+
+.profile-menu-item {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #d8e5f0;
+  font: inherit;
+  font-size: 0.86rem;
+  text-align: left;
+}
+
+.profile-menu-item:hover,
+.profile-menu-item:focus-visible {
+  background: rgba(65, 38, 52, 0.78);
+  color: #f4dfee;
+  outline: none;
+}
+
+.profile-menu-danger {
+  color: #e9a1b9;
+}
+
+.profile-menu-danger:hover,
+.profile-menu-danger:focus-visible {
+  background: rgba(122, 56, 83, 0.36);
+  color: #ffd6e1;
+}
+
 .workspace {
+  position: relative;
+  z-index: 1;
   flex: 1;
   display: flex;
   align-items: stretch;
