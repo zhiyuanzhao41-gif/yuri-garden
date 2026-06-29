@@ -1,15 +1,23 @@
-import { access, mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import { resolve } from 'node:path';
-import {
-  CONVERSATIONS_DIR,
-  LEGACY_CONVERSATIONS_DIR,
-} from '../config/paths.js';
 import { DEFAULT_CHARACTER_ID } from '../config/constants.js';
-import { getCharacterOrDefault, listCharacters } from './characterService.js';
+import { getDatabase } from '../db/database.js';
+import { getCharacterOrDefault } from './characterService.js';
 import { httpError } from '../utils/errors.js';
 import { formatDisplayTime } from '../utils/time.js';
 import { assertConversationId, isCharacterId } from '../utils/validation.js';
+
+function rowToMessage(row) {
+  return {
+    role: row.role,
+    content: row.content,
+    time: row.time,
+    meta: row.meta ?? undefined,
+  };
+}
+
+function normalizeCharacterId(characterId) {
+  return isCharacterId(characterId) ? characterId : DEFAULT_CHARACTER_ID;
+}
 
 export function normalizeMessage(message) {
   return {
@@ -43,88 +51,113 @@ export function summarizeConversation(conversation) {
   };
 }
 
-export async function ensureConversationDir() {
-  await mkdir(CONVERSATIONS_DIR, { recursive: true });
-}
-
-export function conversationDir(characterId) {
-  if (!isCharacterId(characterId)) {
-    throw httpError('Invalid character id', 400);
-  }
-
-  return resolve(CONVERSATIONS_DIR, characterId);
-}
-
-function conversationPath(characterId, id) {
-  assertConversationId(id);
-  return resolve(conversationDir(characterId), `${id}.json`);
-}
-
-async function ensureCharacterConversationDir(characterId) {
-  await mkdir(conversationDir(characterId), { recursive: true });
-}
-
-async function conversationSearchDirs(preferredCharacterId) {
-  const dirs = [];
-  const seen = new Set();
-
-  function addDir(dir) {
-    if (seen.has(dir)) return;
-    seen.add(dir);
-    dirs.push(dir);
-  }
-
-  if (isCharacterId(preferredCharacterId)) {
-    addDir(conversationDir(preferredCharacterId));
-  }
+function saveConversation(conversation) {
+  const db = getDatabase();
+  const characterId = normalizeCharacterId(conversation.characterId);
+  const insertConversation = db.prepare(`
+    INSERT INTO conversations (id, character_id, user_id, title, created_at, updated_at)
+    VALUES (?, ?, NULL, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      character_id = excluded.character_id,
+      title = excluded.title,
+      created_at = excluded.created_at,
+      updated_at = excluded.updated_at
+  `);
+  const deleteMessages = db.prepare('DELETE FROM conversation_messages WHERE conversation_id = ?');
+  const insertMessage = db.prepare(`
+    INSERT INTO conversation_messages (
+      conversation_id,
+      message_index,
+      role,
+      content,
+      time,
+      meta
+    )
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
 
   try {
-    const characters = await listCharacters();
-    for (const character of characters) {
-      addDir(conversationDir(character.id));
-    }
+    db.exec('BEGIN');
+    insertConversation.run(
+      conversation.id,
+      characterId,
+      conversation.title,
+      conversation.createdAt,
+      conversation.updatedAt,
+    );
+    deleteMessages.run(conversation.id);
+    conversation.messages.map(normalizeMessage).forEach((message, index) => {
+      insertMessage.run(
+        conversation.id,
+        index,
+        message.role,
+        message.content,
+        message.time,
+        message.meta ?? null,
+      );
+    });
+    db.exec('COMMIT');
   } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
+    db.exec('ROLLBACK');
+    throw error;
   }
 
-  addDir(conversationDir(DEFAULT_CHARACTER_ID));
-  addDir(LEGACY_CONVERSATIONS_DIR);
-
-  return dirs;
+  return {
+    ...conversation,
+    characterId,
+    messages: conversation.messages.map(normalizeMessage),
+  };
 }
 
-export async function findConversationFile(id, preferredCharacterId) {
+export async function readConversation(id, _preferredCharacterId) {
   assertConversationId(id);
 
-  for (const dir of await conversationSearchDirs(preferredCharacterId)) {
-    const filePath = resolve(dir, `${id}.json`);
-    try {
-      await access(filePath);
-      return filePath;
-    } catch (error) {
-      if (error.code !== 'ENOENT') throw error;
-    }
+  const db = getDatabase();
+  const conversation = db.prepare(`
+    SELECT
+      id,
+      character_id AS characterId,
+      title,
+      created_at AS createdAt,
+      updated_at AS updatedAt
+    FROM conversations
+    WHERE id = ?
+  `).get(id);
+
+  if (!conversation) {
+    throw httpError('Conversation not found', 404);
   }
 
-  throw httpError('Conversation not found', 404);
-}
+  const messages = db.prepare(`
+    SELECT role, content, time, meta
+    FROM conversation_messages
+    WHERE conversation_id = ?
+    ORDER BY message_index ASC
+  `).all(id).map(rowToMessage);
 
-export async function readConversation(id, preferredCharacterId) {
-  return JSON.parse(await readFile(await findConversationFile(id, preferredCharacterId), 'utf8'));
+  return {
+    ...conversation,
+    messages,
+  };
 }
 
 export async function writeConversation(conversation) {
-  const characterId = isCharacterId(conversation.characterId)
-    ? conversation.characterId
-    : DEFAULT_CHARACTER_ID;
+  assertConversationId(conversation.id);
 
-  await ensureCharacterConversationDir(characterId);
-  await writeFile(
-    conversationPath(characterId, conversation.id),
-    `${JSON.stringify(conversation, null, 2)}\n`,
-    'utf8',
-  );
-  return conversation;
+  return saveConversation({
+    id: conversation.id,
+    characterId: normalizeCharacterId(conversation.characterId),
+    title: typeof conversation.title === 'string' && conversation.title.trim()
+      ? conversation.title.trim()
+      : '新会话',
+    createdAt: typeof conversation.createdAt === 'string'
+      ? conversation.createdAt
+      : new Date().toISOString(),
+    updatedAt: typeof conversation.updatedAt === 'string'
+      ? conversation.updatedAt
+      : new Date().toISOString(),
+    messages: Array.isArray(conversation.messages) ? conversation.messages : [],
+  });
 }
 
 export function createConversation(character) {
@@ -154,21 +187,43 @@ export async function createConversationForCharacter(characterId) {
 }
 
 export async function listConversationSummaries(characterId) {
-  await ensureConversationDir();
-  const dir = conversationDir(characterId);
+  const safeCharacterId = normalizeCharacterId(characterId);
+  const db = getDatabase();
+  const rows = db.prepare(`
+    SELECT
+      c.id,
+      c.character_id AS characterId,
+      c.title,
+      c.created_at AS createdAt,
+      c.updated_at AS updatedAt,
+      COUNT(m.id) AS messageCount,
+      COALESCE(
+        (
+          SELECT content
+          FROM conversation_messages
+          WHERE conversation_id = c.id
+            AND TRIM(content) != ''
+          ORDER BY message_index DESC
+          LIMIT 1
+        ),
+        ''
+      ) AS preview
+    FROM conversations c
+    LEFT JOIN conversation_messages m ON m.conversation_id = c.id
+    WHERE c.character_id = ?
+    GROUP BY c.id
+    ORDER BY datetime(c.updated_at) DESC
+  `).all(safeCharacterId);
 
-  await mkdir(dir, { recursive: true });
-  const fileNames = await readdir(dir);
-  const conversations = await Promise.all(
-    fileNames
-      .filter((fileName) => fileName.endsWith('.json'))
-      .map(async (fileName) => JSON.parse(await readFile(resolve(dir, fileName), 'utf8'))),
-  );
-
-  return conversations
-    .filter((conversation) => (conversation.characterId || DEFAULT_CHARACTER_ID) === characterId)
-    .map(summarizeConversation)
-    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  return rows.map((row) => ({
+    id: row.id,
+    characterId: row.characterId,
+    title: row.title,
+    preview: row.preview.trim().slice(0, 60) || '还没有开始对话',
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    messageCount: row.messageCount,
+  }));
 }
 
 export async function updateConversationMessages(id, characterId, messages) {
@@ -184,58 +239,28 @@ export async function updateConversationMessages(id, characterId, messages) {
 }
 
 export async function deleteConversation(id, characterId) {
-  const filePath = await findConversationFile(id, characterId);
+  assertConversationId(id);
 
-  try {
-    await unlink(filePath);
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      throw httpError('Conversation not found', 404);
-    }
-    throw error;
+  const existingConversation = await readConversation(id, characterId);
+  const result = getDatabase()
+    .prepare('DELETE FROM conversations WHERE id = ?')
+    .run(existingConversation.id);
+
+  if (result.changes === 0) {
+    throw httpError('Conversation not found', 404);
   }
 }
 
 export async function conversationExists(id) {
   try {
-    await findConversationFile(id);
-    return true;
+    assertConversationId(id);
   } catch (error) {
-    if (error.code === 'ENOENT') return false;
-    if (error.status === 404) return false;
+    if (error.status === 400) return false;
     throw error;
   }
-}
 
-export async function migrateLegacyConversations() {
-  try {
-    const fileNames = await readdir(LEGACY_CONVERSATIONS_DIR);
-
-    await Promise.all(
-      fileNames
-        .filter((fileName) => fileName.endsWith('.json'))
-        .map(async (fileName) => {
-          const legacyPath = resolve(LEGACY_CONVERSATIONS_DIR, fileName);
-          const conversation = JSON.parse(await readFile(legacyPath, 'utf8'));
-          const characterId = isCharacterId(conversation.characterId)
-            ? conversation.characterId
-            : DEFAULT_CHARACTER_ID;
-          const targetPath = conversationPath(characterId, conversation.id);
-
-          try {
-            await access(targetPath);
-            return;
-          } catch (error) {
-            if (error.code !== 'ENOENT') throw error;
-          }
-
-          await writeConversation({
-            ...conversation,
-            characterId,
-          });
-        }),
-    );
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
-  }
+  const row = getDatabase()
+    .prepare('SELECT 1 FROM conversations WHERE id = ?')
+    .get(id);
+  return Boolean(row);
 }

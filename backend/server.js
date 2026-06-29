@@ -1,10 +1,10 @@
 import 'dotenv/config';
 import { createApp } from './src/app.js';
-import { migrateLegacyConversations } from './src/services/conversationService.js';
+import { initializeDatabase } from './src/db/database.js';
 
 const PORT = process.env.PORT || 3000;
 
-migrateLegacyConversations()
+initializeDatabase()
   .then(() => {
     const app = createApp();
 
@@ -13,6 +13,6 @@ migrateLegacyConversations()
     });
   })
   .catch((error) => {
-    console.error(`Failed to migrate legacy conversations: ${error.message}`);
+    console.error(`Failed to initialize backend storage: ${error.message}`);
     process.exit(1);
   });

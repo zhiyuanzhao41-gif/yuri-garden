@@ -1,5 +1,6 @@
 .agents
 /data/conversation
+/data/app.sqlite*
 .claude
 
 

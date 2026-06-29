@@ -7,6 +7,5 @@ const PROJECT_DIR = resolve(BACKEND_DIR, '..');
 export const FRONTEND_DIR = resolve(PROJECT_DIR, 'frontend');
 export const DATA_DIR = resolve(PROJECT_DIR, 'data');
 export const CHARACTERS_DIR = resolve(DATA_DIR, 'characters');
-export const CONVERSATIONS_DIR = resolve(DATA_DIR, 'conversation');
-export const LEGACY_CONVERSATIONS_DIR = resolve(BACKEND_DIR, 'conversations');
+export const SQLITE_DB_PATH = resolve(DATA_DIR, 'app.sqlite');
 export const INDEX_HTML_PATH = resolve(FRONTEND_DIR, 'index.html');
