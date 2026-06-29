@@ -18,7 +18,7 @@ conversationsRouter.get('/', async (req, res) => {
       ? req.query.characterId
       : DEFAULT_CHARACTER_ID;
 
-    res.json({ conversations: await listConversationSummaries(characterId) });
+    res.json({ conversations: await listConversationSummaries(req.user.id, characterId) });
   } catch (error) {
     handleJsonError(res, error);
   }
@@ -26,7 +26,7 @@ conversationsRouter.get('/', async (req, res) => {
 
 conversationsRouter.post('/', async (req, res) => {
   try {
-    const conversation = await createConversationForCharacter(req.body?.characterId);
+    const conversation = await createConversationForCharacter(req.user.id, req.body?.characterId);
     res.status(201).json({ conversation });
   } catch (error) {
     handleJsonError(res, error);
@@ -35,7 +35,9 @@ conversationsRouter.post('/', async (req, res) => {
 
 conversationsRouter.get('/:id', async (req, res) => {
   try {
-    res.json({ conversation: await readConversation(req.params.id, req.query.characterId) });
+    res.json({
+      conversation: await readConversation(req.user.id, req.params.id, req.query.characterId),
+    });
   } catch (error) {
     handleJsonError(res, error);
   }
@@ -50,6 +52,7 @@ conversationsRouter.patch('/:id', async (req, res) => {
 
   try {
     const conversation = await updateConversationMessages(
+      req.user.id,
       req.params.id,
       req.body?.characterId,
       messages,
@@ -62,7 +65,7 @@ conversationsRouter.patch('/:id', async (req, res) => {
 
 conversationsRouter.delete('/:id', async (req, res) => {
   try {
-    await deleteConversation(req.params.id, req.query.characterId);
+    await deleteConversation(req.user.id, req.params.id, req.query.characterId);
     res.json({ ok: true });
   } catch (error) {
     handleJsonError(res, error);

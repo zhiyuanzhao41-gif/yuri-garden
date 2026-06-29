@@ -51,14 +51,22 @@ export function summarizeConversation(conversation) {
   };
 }
 
-function saveConversation(conversation) {
+function saveConversation(userId, conversation) {
   const db = getDatabase();
   const characterId = normalizeCharacterId(conversation.characterId);
+  const existingConversation = db.prepare('SELECT user_id AS userId FROM conversations WHERE id = ?')
+    .get(conversation.id);
+
+  if (existingConversation && existingConversation.userId !== userId) {
+    throw httpError('Conversation not found', 404);
+  }
+
   const insertConversation = db.prepare(`
     INSERT INTO conversations (id, character_id, user_id, title, created_at, updated_at)
-    VALUES (?, ?, NULL, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       character_id = excluded.character_id,
+      user_id = excluded.user_id,
       title = excluded.title,
       created_at = excluded.created_at,
       updated_at = excluded.updated_at
@@ -81,6 +89,7 @@ function saveConversation(conversation) {
     insertConversation.run(
       conversation.id,
       characterId,
+      userId,
       conversation.title,
       conversation.createdAt,
       conversation.updatedAt,
@@ -105,11 +114,12 @@ function saveConversation(conversation) {
   return {
     ...conversation,
     characterId,
+    userId,
     messages: conversation.messages.map(normalizeMessage),
   };
 }
 
-export async function readConversation(id, _preferredCharacterId) {
+export async function readConversation(userId, id, _preferredCharacterId) {
   assertConversationId(id);
 
   const db = getDatabase();
@@ -117,12 +127,13 @@ export async function readConversation(id, _preferredCharacterId) {
     SELECT
       id,
       character_id AS characterId,
+      user_id AS userId,
       title,
       created_at AS createdAt,
       updated_at AS updatedAt
     FROM conversations
-    WHERE id = ?
-  `).get(id);
+    WHERE id = ? AND user_id = ?
+  `).get(id, userId);
 
   if (!conversation) {
     throw httpError('Conversation not found', 404);
@@ -141,10 +152,10 @@ export async function readConversation(id, _preferredCharacterId) {
   };
 }
 
-export async function writeConversation(conversation) {
+export async function writeConversation(userId, conversation) {
   assertConversationId(conversation.id);
 
-  return saveConversation({
+  return saveConversation(userId, {
     id: conversation.id,
     characterId: normalizeCharacterId(conversation.characterId),
     title: typeof conversation.title === 'string' && conversation.title.trim()
@@ -181,12 +192,12 @@ export function createConversation(character) {
   };
 }
 
-export async function createConversationForCharacter(characterId) {
+export async function createConversationForCharacter(userId, characterId) {
   const character = await getCharacterOrDefault(characterId);
-  return writeConversation(createConversation(character));
+  return writeConversation(userId, createConversation(character));
 }
 
-export async function listConversationSummaries(characterId) {
+export async function listConversationSummaries(userId, characterId) {
   const safeCharacterId = normalizeCharacterId(characterId);
   const db = getDatabase();
   const rows = db.prepare(`
@@ -210,10 +221,10 @@ export async function listConversationSummaries(characterId) {
       ) AS preview
     FROM conversations c
     LEFT JOIN conversation_messages m ON m.conversation_id = c.id
-    WHERE c.character_id = ?
+    WHERE c.user_id = ? AND c.character_id = ?
     GROUP BY c.id
     ORDER BY datetime(c.updated_at) DESC
-  `).all(safeCharacterId);
+  `).all(userId, safeCharacterId);
 
   return rows.map((row) => ({
     id: row.id,
@@ -226,11 +237,11 @@ export async function listConversationSummaries(characterId) {
   }));
 }
 
-export async function updateConversationMessages(id, characterId, messages) {
-  const existingConversation = await readConversation(id, characterId);
+export async function updateConversationMessages(userId, id, characterId, messages) {
+  const existingConversation = await readConversation(userId, id, characterId);
   const savedMessages = messages.map(normalizeMessage);
 
-  return writeConversation({
+  return writeConversation(userId, {
     ...existingConversation,
     title: titleFromMessages(savedMessages),
     updatedAt: new Date().toISOString(),
@@ -238,20 +249,20 @@ export async function updateConversationMessages(id, characterId, messages) {
   });
 }
 
-export async function deleteConversation(id, characterId) {
+export async function deleteConversation(userId, id, characterId) {
   assertConversationId(id);
 
-  const existingConversation = await readConversation(id, characterId);
+  const existingConversation = await readConversation(userId, id, characterId);
   const result = getDatabase()
-    .prepare('DELETE FROM conversations WHERE id = ?')
-    .run(existingConversation.id);
+    .prepare('DELETE FROM conversations WHERE id = ? AND user_id = ?')
+    .run(existingConversation.id, userId);
 
   if (result.changes === 0) {
     throw httpError('Conversation not found', 404);
   }
 }
 
-export async function conversationExists(id) {
+export async function conversationExists(userId, id) {
   try {
     assertConversationId(id);
   } catch (error) {
@@ -260,7 +271,7 @@ export async function conversationExists(id) {
   }
 
   const row = getDatabase()
-    .prepare('SELECT 1 FROM conversations WHERE id = ?')
-    .get(id);
+    .prepare('SELECT 1 FROM conversations WHERE id = ? AND user_id = ?')
+    .get(id, userId);
   return Boolean(row);
 }

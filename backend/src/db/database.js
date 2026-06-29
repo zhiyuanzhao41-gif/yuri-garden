@@ -68,6 +68,8 @@ export async function initializeDatabase() {
 
     CREATE INDEX IF NOT EXISTS idx_conversations_character_updated
       ON conversations(character_id, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_conversations_user_character_updated
+      ON conversations(user_id, character_id, updated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_conversation_messages_conversation_index
       ON conversation_messages(conversation_id, message_index);
     CREATE INDEX IF NOT EXISTS idx_user_api_keys_user

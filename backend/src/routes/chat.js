@@ -24,8 +24,8 @@ chatRouter.post('/', async (req, res) => {
   try {
     assertConversationId(conversationId);
 
-    if (!(await conversationExists(conversationId))) {
-      return res.status(400).json({ error: 'Conversation not found' });
+    if (!(await conversationExists(req.user.id, conversationId))) {
+      return res.status(404).json({ error: 'Conversation not found' });
     }
   } catch (error) {
     return handleJsonError(res, error);
@@ -117,7 +117,7 @@ chatRouter.post('/', async (req, res) => {
       }
     }
 
-    const existingConversation = await readConversation(conversationId, characterId);
+    const existingConversation = await readConversation(req.user.id, conversationId, characterId);
     const savedMessages = messages.map(normalizeMessage);
     const lastMessage = savedMessages.at(-1);
 
@@ -134,7 +134,7 @@ chatRouter.post('/', async (req, res) => {
       });
     }
 
-    await writeConversation({
+    await writeConversation(req.user.id, {
       ...existingConversation,
       characterId: existingConversation.characterId || character.id,
       title: titleFromMessages(savedMessages),
