@@ -8,6 +8,7 @@ export async function requestAssistantReply(appState, assistantIndex, onContent)
 
   const response = await fetch(`${API_BASE_URL}/api/chat`, {
     method: "POST",
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
     },
@@ -20,7 +21,9 @@ export async function requestAssistantReply(appState, assistantIndex, onContent)
 
   if (!response.ok || !response.body) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || `请求失败：${response.status}`);
+    const requestError = new Error(error.error || `请求失败：${response.status}`);
+    requestError.status = response.status;
+    throw requestError;
   }
 
   const reader = response.body.getReader();

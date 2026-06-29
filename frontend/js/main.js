@@ -1,4 +1,5 @@
 import { fallbackCharacter, state } from "./chat/state.js";
+import { getCurrentUser, loginRedirectUrl } from "./app/auth.js";
 import {
   createConversationRequest,
   deleteConversationRequest,
@@ -31,6 +32,10 @@ const elements = {
 function getRequestedCharacterId() {
   const params = new URLSearchParams(window.location.search);
   return params.get("character") || fallbackCharacter.id;
+}
+
+function redirectToLogin() {
+  window.location.replace(loginRedirectUrl(getRequestedCharacterId()));
 }
 
 async function loadActiveCharacter() {
@@ -491,6 +496,17 @@ function bindEvents() {
 }
 
 async function bootApp() {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      redirectToLogin();
+      return;
+    }
+  } catch {
+    redirectToLogin();
+    return;
+  }
+
   bindEvents();
   await loadActiveCharacter();
   await bootConversations();

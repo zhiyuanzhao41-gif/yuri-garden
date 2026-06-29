@@ -19,11 +19,16 @@ export function assetUrl(path) {
 }
 
 export async function fetchJson(path, options = {}) {
-  const response = await fetch(`${API_BASE_URL}${path}`, options);
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    credentials: "include",
+  });
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(data.error || `请求失败：${response.status}`);
+    const error = new Error(data.error || `请求失败：${response.status}`);
+    error.status = response.status;
+    throw error;
   }
 
   return data;
